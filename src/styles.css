@@ -1,0 +1,72 @@
+:root {
+  --bg: #0f0f14;
+  --card: rgba(255, 255, 255, 0.08);
+  --text: #f2f2f5;
+  --muted: #9a9aa6;
+  --accent: #ff7333;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+a { color: inherit; text-decoration: none; }
+h1, h2 { margin: 0 0 12px; }
+button, .button, select, input {
+  font: inherit; color: var(--text); background: var(--card); border: 0; border-radius: 10px; padding: 9px 14px;
+}
+button, .button { cursor: pointer; display: inline-block; }
+button:hover, .button:hover { filter: brightness(1.25); }
+button:disabled { opacity: 0.4; cursor: default; }
+.primary { background: var(--accent); color: #fff; font-weight: 600; }
+.muted { color: var(--muted); }
+.accent { color: var(--accent); font-weight: 600; }
+.error { color: #ff6b6b; }
+.center { display: grid; place-items: center; min-height: 60vh; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.page { padding: 24px max(16px, 4vw); }
+.narrow { max-width: 640px; }
+
+.topbar { position: sticky; top: 0; z-index: 10; display: flex; gap: 22px; align-items: center; padding: 14px max(16px, 4vw);
+  background: linear-gradient(var(--bg), rgba(15, 15, 20, 0.85)); backdrop-filter: blur(10px); overflow-x: auto; }
+.topbar .logo { color: var(--accent); font-weight: 800; font-size: 20px; margin-right: 12px; white-space: nowrap; }
+.topbar a { color: var(--muted); white-space: nowrap; }
+.topbar a.active { color: var(--text); font-weight: 600; }
+
+.login { max-width: 380px; margin: 12vh auto; padding: 0 16px; display: grid; gap: 12px; text-align: center; }
+.login h1 { color: var(--accent); font-size: 40px; }
+.login form { display: grid; gap: 10px; }
+
+.hero { height: 62vh; min-height: 360px; background-size: cover; background-position: center; position: relative; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 40%, var(--bg)), linear-gradient(90deg, rgba(0,0,0,.6), transparent 60%); }
+.hero-body { position: absolute; z-index: 1; bottom: 40px; left: max(16px, 4vw); max-width: 620px; }
+.hero-body h1 { font-size: clamp(28px, 5vw, 54px); }
+
+section { margin: 28px 0; }
+section h2 { padding: 0 max(16px, 4vw); font-size: 20px; }
+.shelf { display: flex; gap: 12px; overflow-x: auto; padding: 4px max(16px, 4vw) 12px; scroll-snap-type: x mandatory; }
+.poster { width: 150px; flex: none; scroll-snap-align: start; font-size: 13px; }
+.poster-img { aspect-ratio: 2 / 3; background: var(--card) center / cover; border-radius: 8px; position: relative; transition: transform .15s; }
+.poster:hover .poster-img { transform: scale(1.04); }
+.poster span:last-child { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { position: absolute; top: 6px; left: 6px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.jobs .badge { position: static; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px; }
+.grid .poster { width: auto; }
+.search { width: 100%; font-size: 20px; padding: 14px 18px; margin-bottom: 20px; }
+
+.title-header { height: 280px; margin: -24px calc(-1 * max(16px, 4vw)) 0; background: center / cover; mask-image: linear-gradient(#000 40%, transparent); }
+.player { width: 100%; max-height: 72vh; background: #000; border-radius: 10px; }
+.title-info { display: flex; gap: 24px; margin: -60px 0 24px; position: relative; }
+.player + .title-info { margin-top: 20px; }
+.title-info img { width: 160px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; flex: none; }
+@media (max-width: 640px) { .title-info { flex-direction: column; } .title-info img { width: 120px; } }
+.episodes, .results, .jobs { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.episodes li { display: flex; justify-content: space-between; align-items: center; background: var(--card); border-radius: 10px; padding-right: 12px; }
+.episodes li.active { outline: 2px solid var(--accent); }
+.episodes button { background: none; text-align: left; flex: 1; }
+.results button { width: 100%; text-align: left; }
+.jobs li { background: var(--card); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
+progress { width: 100%; accent-color: var(--accent); }
+
+.dialog-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: grid; place-items: center; z-index: 20; padding: 16px; }
+.dialog { background: #1a1a22; border-radius: 16px; padding: 20px; width: min(760px, 100%); max-height: 86vh; overflow: auto; }
+.dialog header { display: flex; justify-content: space-between; align-items: center; }

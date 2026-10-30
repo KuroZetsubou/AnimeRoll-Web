@@ -19,7 +19,10 @@ export type Home = {
   continueWatching: { series: Series; episode: Episode }[];
   recentlyAdded: Series[]; aniListWatching: Entry[]; trending: Media[]; seasonal: Media[];
 };
-export type Provider = { id: string; name: string; enabled: boolean; canSearch: boolean; canListEpisodes: boolean; canStream: boolean; hint?: string };
+export type Provider = {
+  id: string; name: string; enabled: boolean; canSearch: boolean; canListEpisodes: boolean; canStream: boolean;
+  hint?: string; refPattern?: string; isPlugin?: boolean;
+};
 export type SourceResult = { ref: string; title: string; posterUrl?: string; subtitle?: string; extra?: Record<string, string> };
 export type SourceEpisode = { ref: string; number?: number; title: string; extra?: Record<string, string> };
 export type Job = {

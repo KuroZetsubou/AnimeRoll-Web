@@ -185,7 +185,8 @@ function SourcesDialog({ title, aniListId, onClose, onStream }:
   const [episodes, setEpisodes] = useState<SourceEpisode[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string>();
-  const [crUrl, setCrUrl] = useState("");
+  const [manualRef, setManualRef] = useState("");
+  const [manualEp, setManualEp] = useState("");
 
   useEffect(() => { api.providers().then((p) => { setProviders(p.filter((x) => x.enabled)); setProvider(p.find((x) => x.enabled)); }); }, []);
   useEffect(() => { search(); }, [provider]);
@@ -216,17 +217,22 @@ function SourcesDialog({ title, aniListId, onClose, onStream }:
           <select value={provider?.id} onChange={(e) => setProvider(providers.find((p) => p.id === e.target.value))}>
             {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {provider?.id !== "crunchyroll" && (<>
+          {provider?.canSearch && (<>
             <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} />
             <button onClick={search}>Cerca</button>
           </>)}
         </div>
         {provider?.hint && <p className="muted">{provider.hint}</p>}
         {msg && <p className="accent">{msg}</p>}
-        {provider?.id === "crunchyroll" && (
+        {provider && !provider.canSearch && (
           <div className="row">
-            <input placeholder="https://www.crunchyroll.com/series/…" value={crUrl} onChange={(e) => setCrUrl(e.target.value)} />
-            <button className="primary" disabled={!crUrl.includes("crunchyroll.com")} onClick={() => send([{ sourceRef: crUrl }])}>Scarica sul NAS</button>
+            <input placeholder="Link o riferimento (https://…)" value={manualRef} onChange={(e) => setManualRef(e.target.value)} />
+            <input placeholder="Ep. n°" style={{ width: 80 }} value={manualEp} onChange={(e) => setManualEp(e.target.value)} />
+            <button className="primary"
+              disabled={!manualRef.trim() || (!!provider.refPattern && !new RegExp(provider.refPattern).test(manualRef.trim()))}
+              onClick={() => send([{ sourceRef: manualRef.trim(), episodeNumber: manualEp ? Number(manualEp.replace(",", ".")) : undefined }])}>
+              Scarica sul NAS
+            </button>
           </div>
         )}
         {!picked && (

@@ -19,6 +19,24 @@ export type Home = {
   continueWatching: { series: Series; episode: Episode }[];
   recentlyAdded: Series[]; aniListWatching: Entry[]; trending: Media[]; seasonal: Media[];
 };
+export type Subtitle = { index: number; language?: string; label: string; isDefault: boolean; isForced: boolean; isSignsOnly: boolean; url: string };
+export type StreamInfo = { url: string; downloadUrl: string; resumeAt?: number; subtitles?: Subtitle[] };
+
+/** Same rule as the apps: preferred language, full tracks before "signs & songs", "off" respected. */
+export function pickSubtitle(subs: Subtitle[]): Subtitle | undefined {
+  let pref = "auto";
+  try { pref = localStorage.getItem("animeroll.subtitles") ?? "auto"; } catch { /* private mode */ }
+  if (pref === "off" || subs.length === 0) return undefined;
+  const two = (l?: string) => ({ ita: "it", eng: "en", jpn: "ja", spa: "es", fre: "fr", fra: "fr", ger: "de", deu: "de", por: "pt" } as Record<string, string>)[l ?? ""] ?? l;
+  const full = subs.filter((s) => !s.isSignsOnly);
+  const wanted = pref === "auto" ? [...navigator.languages.map((l) => l.slice(0, 2)), "en"] : [pref];
+  for (const code of wanted) {
+    const hit = full.find((s) => two(s.language) === code);
+    if (hit) return hit;
+  }
+  return full.find((s) => s.isDefault) ?? full[0] ?? subs[0];
+}
+
 export type Provider = {
   id: string; name: string; enabled: boolean; canSearch: boolean; canListEpisodes: boolean; canStream: boolean;
   hint?: string; refPattern?: string; isPlugin?: boolean;
@@ -27,7 +45,12 @@ export type SourceResult = { ref: string; title: string; posterUrl?: string; sub
 export type SourceEpisode = { ref: string; number?: number; title: string; extra?: Record<string, string> };
 export type Job = {
   id: string; source: string; seriesTitle: string; episodeNumber?: number; status: string; progress: number; message?: string;
+  priority?: number;
 };
+export type QueueSettings = { maxConcurrentDownloads: number };
+export type PasskeyInfo = { id: number; name: string; createdAt?: string; lastUsedAt?: string };
+export type TelegramStatus = { configured: boolean; loggedIn: boolean };
+export type TelegramChannel = { id: number; title: string; enabled: boolean };
 
 const TOKEN = "animeroll.token";
 export const auth = {
@@ -77,13 +100,27 @@ export const api = {
   seriesByAniList: (id: number) => call<Series>("GET", `/api/library/by-anilist/${id}`).catch(() => null),
   series: (id: number) => call<Series>("GET", `/api/library/series/${id}`),
   episodes: (seriesId: number) => call<Episode[]>("GET", `/api/library/series/${seriesId}/episodes`),
-  stream: (episodeId: number) => call<{ url: string; downloadUrl: string; resumeAt?: number }>("GET", `/api/library/episodes/${episodeId}/stream`),
+  stream: (episodeId: number) => call<StreamInfo>("GET", `/api/library/episodes/${episodeId}/stream`),
+  repairEpisode: (id: number) => call<unknown>("POST", `/api/library/episodes/${id}/repair`),
+  repairSeries: (id: number) => call<unknown>("POST", `/api/library/series/${id}/repair`),
   progress: (episodeId: number, positionSeconds: number, durationSeconds?: number) =>
     call("PUT", `/api/library/episodes/${episodeId}/progress`, { positionSeconds, durationSeconds }),
 
   aniListMedia: (id: number) => call<Media>("GET", `/api/anilist/media/${id}`),
   aniListEntry: (id: number) => call<Entry | null>("GET", `/api/anilist/entry/${id}`).catch(() => null),
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
+  aniListBrowse: (season: string, year: number, genre?: string) =>
+    call<Media[]>("GET", `/api/anilist/browse?season=${season}&year=${year}${genre ? `&genre=${encodeURIComponent(genre)}` : ""}`),
+  aniListList: (status: string) => call<Entry[]>("GET", `/api/anilist/list/${status}`),
+  setAniListStatus: (mediaId: number, status: string) => call("PUT", `/api/anilist/entry/${mediaId}/status`, { status }),
+  aniListDisconnect: () => call("DELETE", "/api/anilist/connect"),
+  passkeys: () => call<PasskeyInfo[]>("GET", "/api/auth/passkeys"),
+  deletePasskey: (id: number) => call("DELETE", `/api/auth/passkeys/${id}`),
+  telegramStatus: () => call<TelegramStatus>("GET", "/api/telegram/status"),
+  telegramLogin: (code?: string) => call<{ next?: string }>("POST", "/api/telegram/login", code ? { code } : {}),
+  telegramChannels: () => call<TelegramChannel[]>("GET", "/api/telegram/channels"),
+  saveTelegramChannels: (c: TelegramChannel[]) => call("PUT", "/api/telegram/channels", c),
+  scanInbox: () => call<unknown>("POST", "/api/library/scan-inbox"),
   aniListConnect: () => call<{ url: string }>("GET", "/api/anilist/connect"),
 
   providers: () => call<Provider[]>("GET", "/api/sources"),
@@ -98,6 +135,15 @@ export const api = {
   jobs: () => call<Job[]>("GET", "/api/downloads"),
   cancelJob: (id: string) => call("POST", `/api/downloads/${id}/cancel`),
   retryJob: (id: string) => call("POST", `/api/downloads/${id}/retry`),
+  pauseJob: (id: string) => call("POST", `/api/downloads/${id}/pause`),
+  resumeJob: (id: string) => call("POST", `/api/downloads/${id}/resume`),
+  startNow: (id: string) => call("POST", `/api/downloads/${id}/start-now`),
+  setPriority: (id: string, priority: number) => call("PUT", `/api/downloads/${id}/priority`, { priority }),
+  pauseAll: () => call("POST", "/api/downloads/pause-all"),
+  resumeAll: () => call("POST", "/api/downloads/resume-all"),
+  clearFinished: () => call("DELETE", "/api/downloads/finished"),
+  queueSettings: () => call<QueueSettings>("GET", "/api/settings/queue"),
+  setQueueSettings: (s: QueueSettings) => call<QueueSettings>("PUT", "/api/settings/queue", s),
 
   async upload(file: File, seriesTitle: string, aniListId?: number, episodeNumber?: number) {
     const form = new FormData();

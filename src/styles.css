@@ -179,7 +179,7 @@ button { cursor: pointer; }
 .sent { text-align: center; display: grid; gap: 12px; justify-items: center; padding: 24px 0 8px; }
 .sent h3 { font-size: 20px; }
 .seasons { display: flex; gap: 12px; }
-.seasons > div { flex: 1; min-width: 0; }
+.seasons > div { flex: 1; min-width: 0; max-height: min(58vh, 560px); overflow-y: auto; scrollbar-width: thin; }
 .seasons h4 { margin: 0 0 8px 4px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
 .seasons button { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 52px; padding: 0 16px; margin-bottom: 6px; border-radius: var(--r-md); border: 1px solid var(--border-subtle); background: var(--surface-card); font-weight: 600; font-size: 16px; }
 .seasons button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

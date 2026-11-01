@@ -146,7 +146,7 @@ function SeasonPicker({ value, onApply, onClose }: { value: { season: string; ye
   const compact = useCompact();
   const [season, setSeason] = useState(value.season);
   const [year, setYear] = useState(value.year);
-  const years = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + 1 - i);
+  const years = Array.from({ length: new Date().getFullYear() + 2 - 1960 }, (_, i) => new Date().getFullYear() + 1 - i);
   const label = SEASONS.find((s) => s[1] === season)![0];
   const body = (
     <>

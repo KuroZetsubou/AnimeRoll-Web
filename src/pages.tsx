@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  api, Entry, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, SourceResult,
+  api, Entry, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, StorageInfo, SourceResult,
   stripHtml, Subtitle, TelegramChannel, TelegramStatus, User,
 } from "./api";
 import { Badge, Button, Chip, Drawer, Empty, Field, fmtTime, Group, Icon, IconButton, PosterCard, Progress, Segmented, SettingsRow, Shelf, useCompact } from "./ui";
 
 const ALSTATUS: Record<string, string> = { CURRENT: "In corso", PLANNING: "Pianificato", COMPLETED: "Completato", PAUSED: "In pausa", DROPPED: "Abbandonato" };
 const meta = (...p: (string | number | undefined | null | false)[]) => p.filter(Boolean).join(" · ");
+const gb = (b: number) => (b >= 1 << 30 ? `${(b / 2 ** 30).toFixed(1)} GB` : `${Math.round(b / 2 ** 20)} MB`);
 const pct = (e: Episode) => (e.positionSeconds && e.durationSeconds ? (e.positionSeconds / e.durationSeconds) * 100 : undefined);
 
 // ---------- Login ----------
@@ -72,6 +73,9 @@ export function HomePage() {
     return () => clearInterval(t);
   }, [featured.length]);
   const loc = useLocation();
+  // Swipe / drag left or right to change the featured title.
+  const touch = useRef<number | null>(null);
+  const swipe = (dx: number) => { if (Math.abs(dx) > 40 && featured.length > 1) setSlide((s) => (s + (dx < 0 ? 1 : featured.length - 1)) % featured.length); };
 
   if (error) return <p className="error page">{error}</p>;
   if (!home) return <div className="center">Caricamento…</div>;
@@ -85,7 +89,8 @@ export function HomePage() {
       </div>
       {f && (
         <div className="hero-wrap">
-          <Link className="hero" to={`/anime/${f.id}`} state={{ bg: (loc.state as { bg?: unknown } | null)?.bg ?? loc }}
+          <Link className="hero" onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
+            onTouchEnd={(e) => { if (touch.current != null) swipe(e.changedTouches[0].clientX - touch.current); touch.current = null; }} to={`/anime/${f.id}`} state={{ bg: (loc.state as { bg?: unknown } | null)?.bg ?? loc }}
             style={(f.bannerUrl ?? f.coverUrl) ? { backgroundImage: `url(${f.bannerUrl ?? f.coverUrl})` } : undefined}>
             <div className="body">
               <Badge>In evidenza</Badge>
@@ -313,6 +318,7 @@ export function TitlePage() {
   const [more, setMore] = useState(false);
   const [all, setAll] = useState(false);
   const [note, setNote] = useState<string>();
+  const [confirm, setConfirm] = useState<{ kind: "episode"; ep: Episode } | { kind: "series" }>();
 
   const bg = (loc.state as { bg?: { pathname: string; search?: string } } | null)?.bg;
   const close = () => nav(bg ? `${bg.pathname}${bg.search ?? ""}` : "/");
@@ -354,14 +360,31 @@ export function TitlePage() {
   }, [sorted]);
 
   const title = media?.title ?? series?.title ?? "";
-  const similar = useMemo(() => {
-    const g = media?.genres ?? [];
-    const pool = [...(home?.trending ?? []), ...(home?.seasonal ?? [])];
-    return pool.filter((m, i) => m.id !== media?.id && pool.findIndex((x) => x.id === m.id) === i && m.genres.some((x) => g.includes(x)));
-  }, [home, media]);
+  // "Simili": AniList's own recommendations.
+  const [similar, setSimilar] = useState<Media[] | null>(null);
+  const alId = media?.id ?? series?.aniListId;
+  useEffect(() => {
+    setSimilar(null);
+    if (!alId) { if (loaded) setSimilar([]); return; }
+    api.aniListRecommendations(alId).then((r) => setSimilar(r.filter((m) => m.id !== alId)));
+  }, [alId, loaded]);
   const shown = all ? sorted : sorted.slice(0, 6);
   const desc = stripHtml(media?.description ?? series?.description);
   const banner = media?.bannerUrl ?? series?.bannerUrl ?? media?.coverUrl ?? series?.posterUrl;
+
+  const doDelete = async () => {
+    const c = confirm;
+    setConfirm(undefined);
+    try {
+      if (c?.kind === "episode") {
+        await api.deleteEpisode(c.ep.id);
+        setEpisodes((es) => { const left = es.filter((e) => e.id !== c.ep.id); if (!left.length) setSeries(null); return left; });
+      } else if (c?.kind === "series" && series) {
+        await api.deleteSeries(series.id); setEpisodes([]); setSeries(null);
+      }
+      setNote("Eliminato dal NAS");
+    } catch (e) { setNote((e as Error).message); }
+  };
 
   const setStatus = async (status: string) => {
     setStatusSheet(false);
@@ -410,6 +433,7 @@ export function TitlePage() {
               <>
                 <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
                   {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote("Riparazione inviata al NAS")).catch((e) => setNote(e.message))}>Ripara serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="trash" style={{ marginLeft: 8 }} onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
                 </div>
                 {shown.map((e) => {
                   const seen = e.completed || (entry != null && entry.progress >= e.number);
@@ -424,6 +448,7 @@ export function TitlePage() {
                       </div>
                       <IconButton icon="wrench" label="Ripara sul NAS" title="Ripara sul NAS: riallinea audio/video e sottotitoli"
                         onClick={() => api.repairEpisode(e.id).then(() => setNote("Riparazione inviata al NAS")).catch((x) => setNote(x.message))} />
+                      <IconButton icon="trash" label="Elimina dal NAS" title="Elimina dal NAS" onClick={() => setConfirm({ kind: "episode", ep: e })} />
                     </div>
                   );
                 })}
@@ -431,11 +456,26 @@ export function TitlePage() {
               </>
             )}
           </div>
+        ) : similar === null ? (
+          <div className="muted" style={{ textAlign: "center", padding: "32px 0" }}>Caricamento…</div>
         ) : similar.length ? (
-          <div className="grid" style={{ marginTop: 16 }}>{similar.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.year?.toString()} />)}</div>
+          <div className="shelf" style={{ marginTop: 16, padding: "4px 0 12px" }}>{similar.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.year?.toString()} />)}</div>
         ) : <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>Nessun titolo simile</div>}
       </div>
 
+      {confirm && (
+        <Drawer title={confirm.kind === "episode" ? "Eliminare l'episodio dal NAS?" : "Eliminare tutta la serie dal NAS?"} onClose={() => setConfirm(undefined)}>
+          <p className="muted" style={{ marginBottom: 18 }}>
+            {confirm.kind === "episode"
+              ? `Il file e i sottotitoli dell'episodio ${confirm.ep.number} vengono cancellati dal NAS e liberano spazio. Per rivederlo dovrai scaricarlo di nuovo.`
+              : `Tutti gli episodi di “${title}” vengono cancellati dal NAS. Questa azione non si può annullare.`}
+          </p>
+          <div style={{ display: "grid", gap: 10 }}>
+            <Button full style={{ background: "var(--danger)" }} icon="trash" onClick={doDelete}>{confirm.kind === "episode" ? "Elimina episodio" : "Elimina tutto"}</Button>
+            <Button full variant="ghost" onClick={() => setConfirm(undefined)}>Annulla</Button>
+          </div>
+        </Drawer>
+      )}
       {statusSheet && (
         <Drawer title="Stato su AniList" onClose={() => setStatusSheet(false)}>
           {Object.entries(ALSTATUS).map(([k, label]) => (
@@ -758,6 +798,7 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
   const [user, setUser] = useState(initial);
   const [msg, setMsg] = useState<string>();
   const [queue, setQueue] = useState<QueueSettings>();
+  const [storage, setStorage] = useState<StorageInfo>();
   const [passkeys, setPasskeys] = useState<PasskeyInfo[]>([]);
   const [tg, setTg] = useState<TelegramStatus>();
   const [tgNext, setTgNext] = useState<string>();
@@ -772,6 +813,7 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
   useEffect(() => {
     api.me().then(setUser).catch(() => {});
     api.queueSettings().then(setQueue).catch(() => {});
+    api.storage().then(setStorage).catch(() => {});
     api.passkeys().then(setPasskeys).catch(() => {});
     loadTg();
   }, []);
@@ -802,6 +844,18 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
         <SettingsRow icon="plus" label="Aggiungi passkey"
           onClick={() => api.passkeyRegister(navigator.platform || "Browser").then(() => { setMsg("Passkey creata"); api.passkeys().then(setPasskeys); }).catch((e) => setMsg(e.message))} />
       </Group>
+      {storage && (
+        <Group title="Spazio sul NAS" note="Sotto la riserva il NAS rifiuta nuovi download e import. Per liberare spazio elimina episodi o serie dalla pagina del titolo.">
+          <div className="pad">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 20, color: storage.freeBytes < storage.reserveBytes * 2 ? "var(--danger)" : undefined }}>{gb(storage.freeBytes)} liberi</b>
+              <span className="muted">su {gb(storage.totalBytes)}</span>
+            </div>
+            <Progress value={storage.totalBytes ? ((storage.totalBytes - storage.freeBytes) / storage.totalBytes) * 100 : 0} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }} className="muted"><span>Libreria {gb(storage.libraryBytes)}</span><span>Riserva {gb(storage.reserveBytes)}</span></div>
+          </div>
+        </Group>
+      )}
       {queue && (
         <Group title="Download sul NAS" note="Quanti lavori il NAS esegue insieme. Gli altri aspettano in coda in ordine di priorità.">
           <div className="row-s"><span className="l">Download contemporanei</span>

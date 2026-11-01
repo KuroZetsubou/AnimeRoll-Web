@@ -116,8 +116,9 @@ export function PosterCard({ to, title, meta, img, badge, progress, landscape, r
     </>
   );
   const loc = useLocation();
+  const hideKeyboard = () => (document.activeElement as HTMLElement | null)?.blur();
   const cls = `poster${landscape ? " landscape" : ""}${rank != null ? " ranked" : ""}`;
-  return to ? <Link to={to} state={{ bg: (loc.state as { bg?: unknown } | null)?.bg ?? loc }} className={cls}>{inner}</Link> : <div className={cls} onClick={onClick} style={{ cursor: "pointer" }}>{inner}</div>;
+  return to ? <Link onClick={hideKeyboard} to={to} state={{ bg: (loc.state as { bg?: unknown } | null)?.bg ?? loc }} className={cls}>{inner}</Link> : <div className={cls} onClick={onClick} style={{ cursor: "pointer" }}>{inner}</div>;
 }
 
 export function Shelf({ title, children }: { title: string; children: React.ReactNode[] }) {

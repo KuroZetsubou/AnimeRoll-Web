@@ -48,6 +48,7 @@ export type Job = {
   priority?: number;
 };
 export type QueueSettings = { maxConcurrentDownloads: number };
+export type StorageInfo = { totalBytes: number; freeBytes: number; libraryBytes: number; reserveBytes: number };
 export type PasskeyInfo = { id: number; name: string; createdAt?: string; lastUsedAt?: string };
 export type TelegramStatus = { configured: boolean; loggedIn: boolean };
 export type TelegramChannel = { id: number; title: string; enabled: boolean };
@@ -101,6 +102,9 @@ export const api = {
   series: (id: number) => call<Series>("GET", `/api/library/series/${id}`),
   episodes: (seriesId: number) => call<Episode[]>("GET", `/api/library/series/${seriesId}/episodes`),
   stream: (episodeId: number) => call<StreamInfo>("GET", `/api/library/episodes/${episodeId}/stream`),
+  deleteEpisode: (id: number) => call("DELETE", `/api/library/episodes/${id}`),
+  deleteSeries: (id: number) => call("DELETE", `/api/library/series/${id}`),
+  storage: () => call<StorageInfo>("GET", "/api/settings/storage"),
   repairEpisode: (id: number) => call<unknown>("POST", `/api/library/episodes/${id}/repair`),
   repairSeries: (id: number) => call<unknown>("POST", `/api/library/series/${id}/repair`),
   progress: (episodeId: number, positionSeconds: number, durationSeconds?: number) =>
@@ -109,6 +113,7 @@ export const api = {
   aniListMedia: (id: number) => call<Media>("GET", `/api/anilist/media/${id}`),
   aniListEntry: (id: number) => call<Entry | null>("GET", `/api/anilist/entry/${id}`).catch(() => null),
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
+  aniListRecommendations: (id: number) => call<Media[]>("GET", `/api/anilist/media/${id}/recommendations`).catch(() => [] as Media[]),
   aniListBrowse: (season: string, year: number, genre?: string) =>
     call<Media[]>("GET", `/api/anilist/browse?season=${season}&year=${year}${genre ? `&genre=${encodeURIComponent(genre)}` : ""}`),
   aniListList: (status: string) => call<Entry[]>("GET", `/api/anilist/list/${status}`),

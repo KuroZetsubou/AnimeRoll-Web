@@ -19,8 +19,8 @@ export type Home = {
   continueWatching: { series: Series; episode: Episode }[];
   recentlyAdded: Series[]; aniListWatching: Entry[]; trending: Media[]; seasonal: Media[];
 };
-export type Subtitle = { index: number; language?: string; label: string; isDefault: boolean; isForced: boolean; isSignsOnly: boolean; url: string };
-export type StreamInfo = { url: string; downloadUrl: string; resumeAt?: number; subtitles?: Subtitle[] };
+export type Subtitle = { index: number; language?: string; label: string; isDefault: boolean; isForced: boolean; isSignsOnly: boolean; url: string; assUrl?: string };
+export type StreamInfo = { url: string; downloadUrl: string; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[] };
 
 /** Same rule as the apps: preferred language, full tracks before "signs & songs", "off" respected. */
 export function pickSubtitle(subs: Subtitle[]): Subtitle | undefined {

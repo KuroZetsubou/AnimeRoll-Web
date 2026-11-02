@@ -311,7 +311,7 @@ export function TitlePage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [home, setHome] = useState<Home>();
   const [loaded, setLoaded] = useState(false);
-  const [playing, setPlaying] = useState<{ url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[] }>();
+  const [playing, setPlaying] = useState<{ url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[] }>();
   const [sources, setSources] = useState(false);
   const [statusSheet, setStatusSheet] = useState(false);
   const [tab, setTab] = useState<"Episodi" | "Simili">("Episodi");
@@ -348,7 +348,7 @@ export function TitlePage() {
 
   const play = async (ep: Episode) => {
     const s = await api.stream(ep.id);
-    setPlaying({ url: s.url, episode: ep, resumeAt: s.resumeAt, subtitles: s.subtitles ?? [] });
+    setPlaying({ url: s.url, episode: ep, resumeAt: s.resumeAt, subtitles: s.subtitles ?? [], fonts: s.fonts ?? [] });
   };
 
   const sorted = useMemo(() => [...episodes].sort((a, b) => a.number - b.number), [episodes]);
@@ -494,8 +494,8 @@ export function TitlePage() {
 }
 
 // ---------- Player ----------
-function Player({ url, episode, resumeAt, subtitles = [], title, next, episodes = [], onClose, onNext }:
-  { url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; title: string; next?: Episode; episodes?: Episode[]; onClose: () => void; onNext: (e: Episode) => void }) {
+function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, next, episodes = [], onClose, onNext }:
+  { url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; title: string; next?: Episode; episodes?: Episode[]; onClose: () => void; onNext: (e: Episode) => void }) {
   const chosen = pickSubtitle(subtitles);
   const ref = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
@@ -528,8 +528,18 @@ function Player({ url, episode, resumeAt, subtitles = [], title, next, episodes 
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    Array.from(v.textTracks).forEach((tt, i) => { tt.mode = subtitles[i]?.index === track ? "showing" : "disabled"; });
-  }, [track, subtitles]);
+    // ASS tracks are drawn by libass (JASSUB) for the full look; the others by the browser from the WebVTT.
+    const ass = subtitles.find((x) => x.index === track)?.assUrl;
+    Array.from(v.textTracks).forEach((tt, i) => { tt.mode = !ass && subtitles[i]?.index === track ? "showing" : "disabled"; });
+    if (!ass) return;
+    let instance: { destroy: () => Promise<void> | void } | undefined;
+    let cancelled = false;
+    import("jassub").then(({ default: JASSUB }) => {
+      if (cancelled) return;
+      instance = new JASSUB({ video: v, subUrl: ass, fonts }) as unknown as typeof instance;
+    }).catch(() => { /* falls back to nothing: the WebVTT track stays available from the menu */ });
+    return () => { cancelled = true; void instance?.destroy(); };
+  }, [track, subtitles, fonts]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const v = ref.current; if (!v) return;

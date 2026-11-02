@@ -105,6 +105,9 @@ button { cursor: pointer; }
 .shelf-wrap > h2 { padding: 0 var(--side) 12px; max-width: 1180px; margin: 0 auto; }
 .shelf { display: flex; gap: 12px; overflow-x: auto; padding: 4px var(--side) 12px; scrollbar-width: none; }
 .shelf::-webkit-scrollbar { display: none; }
+/* "Simili": posters wrap into rows and the page scrolls vertically. */
+.similar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px 12px; margin-top: 16px; padding: 4px 0 12px; }
+.similar-grid > * { width: auto; min-width: 0; }
 .poster { position: relative; flex: none; width: 120px; display: block; }
 .poster.landscape { width: 220px; }
 .poster .art { position: relative; aspect-ratio: 2 / 3; border-radius: var(--r-sm); background: linear-gradient(160deg, #3a2a22, #1d1a22) center / cover; overflow: hidden; box-shadow: var(--shadow-card); transition: transform var(--dur-base) var(--ease-out); }
@@ -244,3 +247,5 @@ button.row-s:hover { background: rgba(255, 255, 255, 0.04); }
 .ccmenu button { display: flex; width: 100%; justify-content: space-between; height: 42px; align-items: center; padding: 0 12px; border: 0; background: none; border-radius: var(--r-sm); }
 .ccmenu button:hover { background: rgba(255, 255, 255, 0.08); }
 video::cue { font: 600 22px var(--font-body); background: rgba(0, 0, 0, 0.55); }
+
+.similar-h { margin: 22px 0 4px; font-size: 16px; }

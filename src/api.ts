@@ -6,6 +6,7 @@ export type Media = {
   id: number; title: string; titleRomaji?: string; description?: string; coverUrl?: string; bannerUrl?: string;
   episodes?: number; year?: number; format?: string; genres: string[]; averageScore?: number;
 };
+export type Related = { relation: string; media: Media };
 export type Entry = { media: Media; status: string; progress: number };
 export type Series = {
   id: number; aniListId?: number; title: string; description?: string; posterUrl?: string; bannerUrl?: string;
@@ -20,7 +21,8 @@ export type Home = {
   recentlyAdded: Series[]; aniListWatching: Entry[]; trending: Media[]; seasonal: Media[];
 };
 export type Subtitle = { index: number; language?: string; label: string; isDefault: boolean; isForced: boolean; isSignsOnly: boolean; url: string; assUrl?: string };
-export type StreamInfo = { url: string; downloadUrl: string; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[] };
+export type StreamInfo = { url: string; downloadUrl: string; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; audioTracks?: AudioTrack[] };
+export type AudioTrack = { index: number; language?: string; label: string; url: string };
 
 /** Same rule as the apps: preferred language, full tracks before "signs & songs", "off" respected. */
 export function pickSubtitle(subs: Subtitle[]): Subtitle | undefined {
@@ -38,7 +40,7 @@ export function pickSubtitle(subs: Subtitle[]): Subtitle | undefined {
 }
 
 export type Provider = {
-  id: string; name: string; enabled: boolean; canSearch: boolean; canListEpisodes: boolean; canStream: boolean;
+  id: string; name: string; enabled: boolean; canSearch: boolean; canListEpisodes: boolean; canStream: boolean; canSubtitles?: boolean;
   hint?: string; refPattern?: string; isPlugin?: boolean;
 };
 export type SourceResult = { ref: string; title: string; posterUrl?: string; subtitle?: string; extra?: Record<string, string> };
@@ -106,6 +108,8 @@ export const api = {
   deleteSeries: (id: number) => call("DELETE", `/api/library/series/${id}`),
   storage: () => call<StorageInfo>("GET", "/api/settings/storage"),
   repairEpisode: (id: number) => call<unknown>("POST", `/api/library/episodes/${id}/repair`),
+  refreshSubtitles: (seriesId: number, source: string, seriesRef: string) =>
+    call<{ queued: number; notFound: number[] }>("POST", `/api/library/series/${seriesId}/subtitles`, { source, seriesRef }),
   repairSeries: (id: number) => call<unknown>("POST", `/api/library/series/${id}/repair`),
   progress: (episodeId: number, positionSeconds: number, durationSeconds?: number) =>
     call("PUT", `/api/library/episodes/${episodeId}/progress`, { positionSeconds, durationSeconds }),
@@ -113,6 +117,10 @@ export const api = {
   aniListMedia: (id: number) => call<Media>("GET", `/api/anilist/media/${id}`),
   aniListEntry: (id: number) => call<Entry | null>("GET", `/api/anilist/entry/${id}`).catch(() => null),
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
+  aniListRelations: (id: number) => call<Related[]>("GET", `/api/anilist/media/${id}/relations`).catch(() => [] as Related[]),
+  setAniListProgress: (mediaId: number, progress: number) => call("PUT", `/api/anilist/entry/${mediaId}/progress`, { progress }),
+  moveEpisodes: (episodeIds: number[], aniListId: number, numberOffset: number) =>
+    call<{ seriesId: number; moved: number }>("POST", "/api/library/episodes/move", { episodeIds, aniListId, numberOffset }),
   aniListRecommendations: (id: number) => call<Media[]>("GET", `/api/anilist/media/${id}/recommendations`).catch(() => [] as Media[]),
   aniListBrowse: (season: string, year: number, genre?: string) =>
     call<Media[]>("GET", `/api/anilist/browse?season=${season}&year=${year}${genre ? `&genre=${encodeURIComponent(genre)}` : ""}`),

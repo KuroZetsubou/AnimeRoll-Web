@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  api, Entry, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, StorageInfo, SourceResult,
+  api, AudioTrack, Entry, Related, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, StorageInfo, SourceResult,
   stripHtml, Subtitle, TelegramChannel, TelegramStatus, User,
 } from "./api";
 import { Badge, Button, Chip, Drawer, Empty, Field, fmtTime, Group, Icon, IconButton, PosterCard, Progress, Segmented, SettingsRow, Shelf, useCompact } from "./ui";
@@ -311,7 +311,7 @@ export function TitlePage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [home, setHome] = useState<Home>();
   const [loaded, setLoaded] = useState(false);
-  const [playing, setPlaying] = useState<{ url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[] }>();
+  const [playing, setPlaying] = useState<{ url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; audioTracks?: AudioTrack[] }>();
   const [sources, setSources] = useState(false);
   const [statusSheet, setStatusSheet] = useState(false);
   const [tab, setTab] = useState<"Episodi" | "Simili">("Episodi");
@@ -319,6 +319,8 @@ export function TitlePage() {
   const [all, setAll] = useState(false);
   const [note, setNote] = useState<string>();
   const [confirm, setConfirm] = useState<{ kind: "episode"; ep: Episode } | { kind: "series" }>();
+  // "Sposta": give one episode (or the whole series) to another AniList title, e.g. the right season.
+  const [moving, setMoving] = useState<{ eps: Episode[] }>();
 
   const bg = (loc.state as { bg?: { pathname: string; search?: string } } | null)?.bg;
   const close = () => nav(bg ? `${bg.pathname}${bg.search ?? ""}` : "/");
@@ -348,7 +350,7 @@ export function TitlePage() {
 
   const play = async (ep: Episode) => {
     const s = await api.stream(ep.id);
-    setPlaying({ url: s.url, episode: ep, resumeAt: s.resumeAt, subtitles: s.subtitles ?? [], fonts: s.fonts ?? [] });
+    setPlaying({ url: s.url, episode: ep, resumeAt: s.resumeAt, subtitles: s.subtitles ?? [], fonts: s.fonts ?? [], audioTracks: s.audioTracks ?? [] });
   };
 
   const sorted = useMemo(() => [...episodes].sort((a, b) => a.number - b.number), [episodes]);
@@ -362,11 +364,13 @@ export function TitlePage() {
   const title = media?.title ?? series?.title ?? "";
   // "Simili": AniList's own recommendations.
   const [similar, setSimilar] = useState<Media[] | null>(null);
+  const [related, setRelated] = useState<Related[]>([]);
   const alId = media?.id ?? series?.aniListId;
   useEffect(() => {
     setSimilar(null);
     if (!alId) { if (loaded) setSimilar([]); return; }
     api.aniListRecommendations(alId).then((r) => setSimilar(r.filter((m) => m.id !== alId)));
+    api.aniListRelations(alId).then(setRelated);
   }, [alId, loaded]);
   const shown = all ? sorted : sorted.slice(0, 6);
   const desc = stripHtml(media?.description ?? series?.description);
@@ -384,6 +388,15 @@ export function TitlePage() {
       }
       setNote("Eliminato dal NAS");
     } catch (e) { setNote((e as Error).message); }
+  };
+
+  const [progressDraft, setProgressDraft] = useState<number>();
+  const setProgress = async (n: number) => {
+    if (!media) return;
+    setProgressDraft(n);
+    try { await api.setAniListProgress(media.id, n); setEntry(await api.aniListEntry(media.id)); setNote(undefined); }
+    catch (e) { setNote((e as Error).message); }
+    finally { setProgressDraft(undefined); }
   };
 
   const setStatus = async (status: string) => {
@@ -433,6 +446,7 @@ export function TitlePage() {
               <>
                 <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
                   {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote("Riparazione inviata al NAS")).catch((e) => setNote(e.message))}>Ripara serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="move" style={{ marginLeft: 8 }} onClick={() => setMoving({ eps: sorted })}>Sposta serie</Button>}
                   {series && <Button size="sm" variant="ghost" icon="trash" style={{ marginLeft: 8 }} onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
                 </div>
                 {shown.map((e) => {
@@ -448,6 +462,7 @@ export function TitlePage() {
                       </div>
                       <IconButton icon="wrench" label="Ripara sul NAS" title="Ripara sul NAS: riallinea audio/video e sottotitoli"
                         onClick={() => api.repairEpisode(e.id).then(() => setNote("Riparazione inviata al NAS")).catch((x) => setNote(x.message))} />
+                      <IconButton icon="move" label="Sposta in un'altra serie" title="Sposta in un'altra serie" onClick={() => setMoving({ eps: [e] })} />
                       <IconButton icon="trash" label="Elimina dal NAS" title="Elimina dal NAS" onClick={() => setConfirm({ kind: "episode", ep: e })} />
                     </div>
                   );
@@ -458,8 +473,21 @@ export function TitlePage() {
           </div>
         ) : similar === null ? (
           <div className="muted" style={{ textAlign: "center", padding: "32px 0" }}>Caricamento…</div>
-        ) : similar.length ? (
-          <div className="shelf" style={{ marginTop: 16, padding: "4px 0 12px" }}>{similar.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.year?.toString()} />)}</div>
+        ) : (related.length || similar.length) ? (
+          <>
+            {related.length > 0 && (
+              <>
+                <h3 className="similar-h">Stagioni e correlati</h3>
+                <div className="similar-grid">{related.map((r) => <PosterCard key={`${r.relation}-${r.media.id}`} to={`/anime/${r.media.id}`} title={r.media.title} img={r.media.coverUrl} meta={r.relation} />)}</div>
+              </>
+            )}
+            {similar.length > 0 && (
+              <>
+                <h3 className="similar-h">Simili</h3>
+                <div className="similar-grid">{similar.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.year?.toString()} />)}</div>
+              </>
+            )}
+          </>
         ) : <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>Nessun titolo simile</div>}
       </div>
 
@@ -476,8 +504,18 @@ export function TitlePage() {
           </div>
         </Drawer>
       )}
+      {moving && <MoveDrawer eps={moving.eps} fromTitle={title} onClose={() => setMoving(undefined)}
+        onDone={(seriesId) => { setMoving(undefined); if (seriesId !== series?.id) nav(`/series/${seriesId}`); else load(); }} />}
       {statusSheet && (
         <Drawer title="Stato su AniList" onClose={() => setStatusSheet(false)}>
+          {media && (
+            <div className="row-s" style={{ marginBottom: 8 }}>
+              <span className="l">Episodi guardati<small>Su AniList: {entry?.progress ?? 0}{media.episodes ? ` / ${media.episodes}` : ""}</small></span>
+              <IconButton icon="minus" label="Uno in meno" onClick={() => setProgress(Math.max(0, (progressDraft ?? entry?.progress ?? 0) - 1))} />
+              <b style={{ minWidth: 32, textAlign: "center" }}>{progressDraft ?? entry?.progress ?? 0}</b>
+              <IconButton icon="plus" label="Uno in più" onClick={() => setProgress(Math.min(media.episodes ?? 9999, (progressDraft ?? entry?.progress ?? 0) + 1))} />
+            </div>
+          )}
           {Object.entries(ALSTATUS).map(([k, label]) => (
             <button key={k} className="opt" onClick={() => setStatus(k)}>{label}{entry?.status === k && <Icon name="check" size={20} color="var(--accent)" />}</button>
           ))}
@@ -487,15 +525,64 @@ export function TitlePage() {
         <Player key={playing.url} {...playing} title={title} episodes={sorted} next={playing.episode ? sorted.find((e) => e.number > playing.episode!.number) : undefined}
           onClose={() => { setPlaying(undefined); load(); }} onNext={play} />
       )}
-      {sources && <SourcesDrawer title={title} aniListId={media?.id ?? series?.aniListId} onClose={() => { setSources(false); load(); }}
+      {sources && <SourcesDrawer title={title} aniListId={media?.id ?? series?.aniListId} seriesId={series?.id} onClose={() => { setSources(false); load(); }}
         onStream={(url) => { setPlaying({ url }); setSources(false); }} />}
     </aside>
   );
 }
 
+// ---------- Sposta episodi ----------
+function MoveDrawer({ eps, fromTitle, onClose, onDone }: { eps: Episode[]; fromTitle: string; onClose: () => void; onDone: (seriesId: number) => void }) {
+  const [q, setQ] = useState(fromTitle);
+  const [results, setResults] = useState<Media[]>([]);
+  const [picked, setPicked] = useState<Media>();
+  const [offset, setOffset] = useState("0");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => { const t = setTimeout(() => { if (q.trim().length > 1) api.aniListSearch(q).then(setResults).catch(() => setResults([])); }, 300); return () => clearTimeout(t); }, [q]);
+  const off = Number(offset.replace(",", ".")) || 0;
+  const label = eps.length === 1 ? `l'episodio ${eps[0].number}` : `${eps.length} episodi`;
+  const go = async () => {
+    if (!picked) return;
+    setBusy(true); setError(undefined);
+    try { onDone((await api.moveEpisodes(eps.map((e) => e.id), picked.id, off)).seriesId); }
+    catch (e) { setError((e as Error).message); setBusy(false); }
+  };
+  return (
+    <Drawer title="Sposta in un'altra serie" onClose={onClose}>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>Sposti {label} di «{fromTitle}». Il file, i sottotitoli e i progressi vanno con loro.</p>
+      {!picked ? (
+        <>
+          <label className="input pill"><Icon name="search" size={20} /><input value={q} placeholder="Cerca la serie giusta su AniList" onChange={(e) => setQ(e.target.value)} /></label>
+          {results.map((m) => (
+            <button key={m.id} className="pick" onClick={() => setPicked(m)}><b>{m.title}</b><small>{meta(m.year, m.format, m.episodes && `${m.episodes} ep`)}</small><Icon name="right" size={18} color="var(--text-3)" /></button>
+          ))}
+        </>
+      ) : (
+        <>
+          <div className="pick" style={{ cursor: "default" }}><b>{picked.title}</b><small>{meta(picked.year, picked.format, picked.episodes && `${picked.episodes} ep`)}</small></div>
+          <Field label="Cambia il numero degli episodi di" placeholder="0" value={offset} onChange={(e) => setOffset(e.target.value)} />
+          <p className="muted" style={{ fontSize: 12, margin: "6px 0 12px" }}>
+            Esempio: se l'episodio 13 qui è il primo della nuova serie, metti -12. {eps.length === 1 && `L'episodio ${eps[0].number} diventerà il ${eps[0].number + off}.`}
+          </p>
+          {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <Button full disabled={busy} icon="move" onClick={go}>{busy ? "Spostamento…" : `Sposta in «${picked.title}»`}</Button>
+            <Button full variant="ghost" onClick={() => setPicked(undefined)}>← Scegli un'altra serie</Button>
+          </div>
+        </>
+      )}
+    </Drawer>
+  );
+}
+
 // ---------- Player ----------
-function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, next, episodes = [], onClose, onNext }:
-  { url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; title: string; next?: Episode; episodes?: Episode[]; onClose: () => void; onNext: (e: Episode) => void }) {
+const AUDIO_LANG_KEY = "preferredAudioLanguage";
+const LANG2: Record<string, string> = { jpn: "ja", ita: "it", eng: "en", spa: "es", fre: "fr", fra: "fr", ger: "de", deu: "de", por: "pt", rus: "ru" };
+/// Server languages are ISO 639-2 ("jpn"); the setting is shared with the apps as two letters ("ja").
+const lang2 = (l?: string | null) => (l ? LANG2[l.toLowerCase()] ?? l.toLowerCase().slice(0, 2) : "");
+function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTracks = [], title, next, episodes = [], onClose, onNext }:
+  { url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; audioTracks?: AudioTrack[]; title: string; next?: Episode; episodes?: Episode[]; onClose: () => void; onNext: (e: Episode) => void }) {
   const chosen = pickSubtitle(subtitles);
   const ref = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
@@ -505,11 +592,51 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, nex
   const [cc, setCc] = useState(false);
   const [track, setTrack] = useState<number>(chosen ? chosen.index : -1);
   const [list, setList] = useState(false);
+  const [au, setAu] = useState(false);
+  const preferred = localStorage.getItem(AUDIO_LANG_KEY);
+  const [audio, setAudio] = useState<number>(() => audioTracks.find((a) => preferred && lang2(a.language) === preferred)?.index ?? 0);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const audioEl = useRef<HTMLAudioElement>(null);
+  // A dub other than the first is a separate audio file played in sync with the muted video.
+  const dub = audio > 0 ? audioTracks.find((a) => a.index === audio) : undefined;
+  const pickAudio = async (a: AudioTrack) => {
+    if (a.index === audio || audioBusy) return;
+    const l = lang2(a.language);
+    if (l) localStorage.setItem(AUDIO_LANG_KEY, l);
+    // The server extracts the track on first use (can take a while): wait for it before switching.
+    if (a.index > 0) {
+      setAudioBusy(true);
+      try { await fetch(a.url.replace(/\/audio\/(\d+)\.m4a/, "/audio/$1/ready")); } catch { /* the audio request will report it */ }
+      setAudioBusy(false);
+    }
+    setAudio(a.index);
+  };
+  useEffect(() => {
+    const v = ref.current, au = audioEl.current;
+    if (!v || !au) return;
+    if (!dub) { v.muted = false; au.pause(); return; }
+    v.muted = true;
+    const align = () => { if (Math.abs(au.currentTime - v.currentTime) > 0.2) au.currentTime = v.currentTime; };
+    const play = () => { align(); au.playbackRate = v.playbackRate; au.play().catch(() => {}); };
+    const pause = () => au.pause();
+    const vol = () => { au.volume = v.volume; };
+    const seek = () => { au.currentTime = v.currentTime; };
+    const rate = () => { au.playbackRate = v.playbackRate; };
+    v.addEventListener("play", play); v.addEventListener("playing", play); v.addEventListener("pause", pause); v.addEventListener("waiting", pause);
+    v.addEventListener("seeked", seek); v.addEventListener("ratechange", rate); v.addEventListener("volumechange", vol); v.addEventListener("timeupdate", align);
+    au.currentTime = v.currentTime; vol();
+    if (!v.paused) play();
+    return () => {
+      v.removeEventListener("play", play); v.removeEventListener("playing", play); v.removeEventListener("pause", pause); v.removeEventListener("waiting", pause);
+      v.removeEventListener("seeked", seek); v.removeEventListener("ratechange", rate); v.removeEventListener("volumechange", vol); v.removeEventListener("timeupdate", align);
+      au.pause();
+    };
+  }, [dub?.url]);
   const pip = typeof document !== "undefined" && document.pictureInPictureEnabled;
   const hideTimer = useRef<number>();
 
   const menuOpen = useRef(false);
-  menuOpen.current = list || cc;
+  menuOpen.current = list || cc || au;
   // Controls hide after 3 s, but never while the episode list or the subtitle menu is open.
   const wake = () => {
     setShow(true);
@@ -561,11 +688,16 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, nex
     <div className="player" onMouseMove={wake} onClick={wake}>
       {/* Native WebVTT tracks keep subtitles in sync; the CC button picks the track. */}
       <video ref={ref} src={url} autoPlay crossOrigin="anonymous" onClick={() => (v().paused ? v().play() : v().pause())}
-        onLoadedMetadata={(e) => { setDur(e.currentTarget.duration); if (resumeAt && resumeAt > 5) e.currentTarget.currentTime = resumeAt; }}
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget;
+          setDur(v.duration);
+          if (resumeAt && resumeAt > 5) v.currentTime = resumeAt;
+        }}
         onTimeUpdate={(e) => setT(e.currentTarget.currentTime)} onPlay={() => setPaused(false)} onPause={() => { setPaused(true); setShow(true); }}
         onEnded={() => (next ? onNext(next) : onClose())}>
         {subtitles.map((s) => <track key={s.index} kind="subtitles" src={s.url} label={s.label} srcLang={s.language ?? undefined} default={s === chosen} />)}
       </video>
+      <audio ref={audioEl} src={dub?.url} preload="auto" style={{ display: "none" }} />
       <div className={`ui${show ? "" : " hide"}`} onClick={(e) => e.stopPropagation()}>
         <div className="top">
           <IconButton icon="chevdown" label="Chiudi" onClick={onClose} />
@@ -584,16 +716,17 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, nex
               <div className="next glass"><div><small>Prossimo episodio</small><b>E{next.number}{next.title ? ` · ${next.title}` : ""}</b></div><Button size="sm" onClick={() => onNext(next)}>Avvia</Button></div>
             )}
           </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
+            {episodes.length > 1 && <Button size="sm" variant="ghost" icon="list" onClick={() => setList(true)}>Episodi</Button>}
+            <span style={{ flex: 1 }} />
+            {audioTracks.length > 1 && <IconButton icon="audio" label="Lingua audio" onClick={() => { setAu(!au); setCc(false); }} />}
+            {subtitles.length > 0 && <IconButton icon="captions" label="Sottotitoli" onClick={() => { setCc(!cc); setAu(false); }} />}
+            {next && <IconButton icon="skip" label="Episodio successivo" onClick={() => onNext(next)} />}
+          </div>
           <div className="seek" onClick={seek}>
             <div className="track" /><div className="fill" style={{ width: `${dur ? (t / dur) * 100 : 0}%` }} /><div className="knob" style={{ left: `${dur ? (t / dur) * 100 : 0}%` }} />
           </div>
           <div className="times"><span>{fmtTime(t)}</span><span style={{ color: "var(--text-2)" }}>-{fmtTime(dur - t)}</span></div>
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
-            {episodes.length > 1 && <Button size="sm" variant="ghost" icon="list" onClick={() => setList(true)}>Episodi</Button>}
-            <span style={{ flex: 1 }} />
-            {subtitles.length > 0 && <IconButton icon="captions" label="Sottotitoli" onClick={() => setCc(!cc)} />}
-            {next && <IconButton icon="skip" label="Episodio successivo" onClick={() => onNext(next)} />}
-          </div>
         </div>
         {list && (
           <Drawer title="Episodi" onClose={() => setList(false)}>
@@ -607,6 +740,12 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, nex
               );
             })}
           </Drawer>
+        )}
+        {audioBusy && <div className="ccmenu glass" style={{ padding: "12px 16px" }}>Preparo il doppiaggio…</div>}
+        {au && (
+          <div className="ccmenu glass">
+            {audioTracks.map((a) => <button key={a.index} onClick={() => { pickAudio(a); setAu(false); }}>{a.label}{audio === a.index && <Icon name="check" size={18} color="var(--accent)" />}</button>)}
+          </div>
         )}
         {cc && (
           <div className="ccmenu glass">
@@ -623,8 +762,8 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], title, nex
 // ---------- Fonti ("Trova episodi") ----------
 function Step({ n, children }: { n: number; children: React.ReactNode }) { return <div className="step"><i>{n}</i>{children}</div>; }
 
-function SourcesDrawer({ title, aniListId, onClose, onStream }:
-  { title: string; aniListId?: number; onClose: () => void; onStream: (url: string) => void }) {
+function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
+  { title: string; aniListId?: number; seriesId?: number; onClose: () => void; onStream: (url: string) => void }) {
   const nav = useNavigate();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [provider, setProvider] = useState<Provider>();
@@ -659,6 +798,15 @@ function SourcesDrawer({ title, aniListId, onClose, onStream }:
     catch (e) { setError((e as Error).message); }
   };
   const manual = provider && !provider.canSearch;
+  const [subNote, setSubNote] = useState<string>();
+  const refreshSubs = async () => {
+    if (!provider || !picked || seriesId == null) return;
+    setSubNote("Invio…");
+    try {
+      const r = await api.refreshSubtitles(seriesId, provider.id, picked.ref);
+      setSubNote(`${r.queued} episodi in coda per i sottotitoli${r.notFound.length ? ` · non trovati su ${provider.name}: ${r.notFound.join(", ")}` : ""}. Segui l'avanzamento in Download.`);
+    } catch (e) { setSubNote((e as Error).message); }
+  };
 
   if (sent) return (
     <Drawer onClose={onClose}>
@@ -725,6 +873,12 @@ function SourcesDrawer({ title, aniListId, onClose, onStream }:
       )}
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
       <div style={{ display: "grid", gap: 10, marginTop: 20 }}>
+        {!manual && picked && provider?.canSubtitles && seriesId != null && (
+          <>
+            <Button full variant="secondary" icon="captions" onClick={refreshSubs}>Aggiorna solo i sottotitoli (ASS)</Button>
+            {subNote && <p className="muted" style={{ fontSize: 13 }}>{subNote}</p>}
+          </>
+        )}
         {manual ? (
           <Button full icon="down" disabled={!manualRef.trim() || (!!provider?.refPattern && !new RegExp(provider.refPattern).test(manualRef.trim()))}
             onClick={() => send([{ sourceRef: manualRef.trim(), episodeNumber: manualEp ? Number(manualEp.replace(",", ".")) : undefined }])}>Scarica sul NAS ({manualRef.trim() ? 1 : 0})</Button>
@@ -814,6 +968,7 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
   const [tgNext, setTgNext] = useState<string>();
   const [code, setCode] = useState("");
   const [channels, setChannels] = useState<TelegramChannel[]>([]);
+  const [audioLang, setAudioLang] = useState(() => { try { return localStorage.getItem(AUDIO_LANG_KEY) ?? ""; } catch { return ""; } });
 
   const loadTg = async () => {
     const s = await api.telegramStatus().catch(() => undefined);
@@ -834,6 +989,15 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
       <Group title="Account">
         <SettingsRow icon="user" label="Utente" value={user.username} />
         <SettingsRow icon="server" label="Server" value={location.host} />
+      </Group>
+      <Group title="Riproduzione" note="Vale per gli episodi con più tracce audio. Scegliendo un doppiaggio nel player diventa il nuovo predefinito.">
+        <div className="row-s">
+          <Icon name="audio" color="var(--text-2)" />
+          <span className="l">Doppiaggio predefinito</span>
+          <select value={audioLang} onChange={(e) => { setAudioLang(e.target.value); try { localStorage.setItem(AUDIO_LANG_KEY, e.target.value); } catch { /* private mode */ } }}>
+            <option value="">Prima traccia</option><option value="ja">Giapponese</option><option value="it">Italiano</option><option value="en">Inglese</option>
+          </select>
+        </div>
       </Group>
       <Group title="AniList" note="Oltre l'85% di un episodio il server aggiorna AniList. Il progresso non torna mai indietro e l'ultimo episodio imposta Completato.">
         <SettingsRow icon="link" label={user.aniListConnected ? `Collegato come ${user.aniListUserName ?? "AniList"}` : "Non collegato"} />

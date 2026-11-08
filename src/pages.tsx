@@ -667,6 +667,24 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
     };
   }, [dub?.url]);
   const pip = typeof document !== "undefined" && document.pictureInPictureEnabled;
+  // Real fullscreen on the whole player (so the controls stay); iPhone Safari only allows it on the <video> itself.
+  const box = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const canFull = typeof document !== "undefined" && (document.fullscreenEnabled);
+  const toggleFull = useCallback(() => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    const el = box.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    const vid = ref.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el?.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else vid?.webkitEnterFullscreen?.();
+  }, []);
+  useEffect(() => {
+    // Subtitle canvas and layout follow the real size of the window or of the fullscreen screen.
+    const sync = () => { setFull(!!document.fullscreenElement); window.dispatchEvent(new Event("resize")); };
+    document.addEventListener("fullscreenchange", sync);
+    return () => { document.removeEventListener("fullscreenchange", sync); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
+  }, []);
   const hideTimer = useRef<number>();
 
   const menuOpen = useRef(false);
@@ -707,21 +725,22 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
       if (e.key === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
       else if (e.key === "ArrowLeft") v.currentTime -= 10;
       else if (e.key === "ArrowRight") v.currentTime += 10;
-      else if (e.key === "Escape") onClose();
+      else if (e.key === "f" || e.key === "F") toggleFull();
+      else if (e.key === "Escape" && !document.fullscreenElement) onClose();
       wake();
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
+  }, [onClose, toggleFull]);
 
   const v = () => ref.current!;
   const seek = (e: React.MouseEvent<HTMLDivElement>) => { const r = e.currentTarget.getBoundingClientRect(); v().currentTime = ((e.clientX - r.left) / r.width) * (dur || 0); };
   const credits = dur > 0 && dur - t <= 90 && next;
 
   return createPortal(
-    <div className="player" onMouseMove={wake} onClick={wake}>
+    <div className="player" ref={box} onMouseMove={wake} onClick={wake}>
       {/* Native WebVTT tracks keep subtitles in sync; the CC button picks the track. */}
-      <video ref={ref} src={url} autoPlay crossOrigin="anonymous" onClick={() => (v().paused ? v().play() : v().pause())}
+      <video ref={ref} src={url} autoPlay playsInline crossOrigin="anonymous" onClick={() => (v().paused ? v().play() : v().pause())} onDoubleClick={toggleFull}
         onLoadedMetadata={(e) => {
           const v = e.currentTarget;
           setDur(v.duration);
@@ -756,6 +775,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
             {audioTracks.length > 1 && <IconButton icon="audio" label="Lingua audio" onClick={() => { setAu(!au); setCc(false); }} />}
             {subtitles.length > 0 && <IconButton icon="captions" label="Sottotitoli" onClick={() => { setCc(!cc); setAu(false); }} />}
             {next && <IconButton icon="skip" label="Episodio successivo" onClick={() => onNext(next)} />}
+            {canFull && <IconButton icon={full ? "shrink" : "expand"} label={full ? "Esci da schermo intero" : "Schermo intero"} onClick={toggleFull} />}
           </div>
           <div className="seek" onClick={seek}>
             <div className="track" /><div className="fill" style={{ width: `${dur ? (t / dur) * 100 : 0}%` }} /><div className="knob" style={{ left: `${dur ? (t / dur) * 100 : 0}%` }} />

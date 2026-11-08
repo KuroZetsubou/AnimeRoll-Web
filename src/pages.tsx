@@ -709,15 +709,22 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
     if (!v) return;
     // ASS tracks are drawn by libass (JASSUB) for the full look; the others by the browser from the WebVTT.
     const ass = subtitles.find((x) => x.index === track)?.assUrl;
-    Array.from(v.textTracks).forEach((tt, i) => { tt.mode = !ass && subtitles[i]?.index === track ? "showing" : "disabled"; });
-    if (!ass) return;
+    // Only one renderer at a time: the browser may re-enable a WebVTT track on its own (load, new track),
+    // which drew the subtitles twice on top of libass, so the modes are re-applied on those events.
+    const applyModes = () => Array.from(v.textTracks).forEach((tt, i) => { tt.mode = !ass && subtitles[i]?.index === track ? "showing" : "disabled"; });
+    applyModes();
+    v.textTracks.addEventListener("addtrack", applyModes);
+    v.addEventListener("loadedmetadata", applyModes);
+    v.addEventListener("loadeddata", applyModes);
+    const detach = () => { v.textTracks.removeEventListener("addtrack", applyModes); v.removeEventListener("loadedmetadata", applyModes); v.removeEventListener("loadeddata", applyModes); };
+    if (!ass) return detach;
     let instance: { destroy: () => Promise<void> | void } | undefined;
     let cancelled = false;
     import("jassub").then(({ default: JASSUB }) => {
       if (cancelled) return;
       instance = new JASSUB({ video: v, subUrl: ass, fonts }) as unknown as typeof instance;
     }).catch(() => { /* falls back to nothing: the WebVTT track stays available from the menu */ });
-    return () => { cancelled = true; void instance?.destroy(); };
+    return () => { cancelled = true; detach(); void instance?.destroy(); };
   }, [track, subtitles, fonts]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -748,7 +755,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
         }}
         onTimeUpdate={(e) => setT(e.currentTarget.currentTime)} onPlay={() => setPaused(false)} onPause={() => { setPaused(true); setShow(true); }}
         onEnded={() => (next ? onNext(next) : onClose())}>
-        {subtitles.map((s) => <track key={s.index} kind="subtitles" src={s.url} label={s.label} srcLang={s.language ?? undefined} default={s === chosen} />)}
+        {subtitles.map((s) => <track key={s.index} kind="subtitles" src={s.url} label={s.label} srcLang={s.language ?? undefined} />)}
       </video>
       <audio ref={audioEl} src={dub?.url} preload="auto" style={{ display: "none" }} />
       <div className={`ui${show ? "" : " hide"}`} onClick={(e) => e.stopPropagation()}>

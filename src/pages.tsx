@@ -452,11 +452,11 @@ export function TitlePage() {
           <div style={{ marginTop: 8 }}>
             {sorted.length === 0 ? <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>Nessun episodio sul NAS</div> : (
               <>
-                <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "flex-end", padding: "4px 0" }}>
                   {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote("Riparazione inviata al NAS")).catch((e) => setNote(e.message))}>Ripara serie</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="edit" style={{ marginLeft: 8 }} onClick={() => setEditSeries(true)}>Modifica info</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="move" style={{ marginLeft: 8 }} onClick={() => setMoving({ eps: sorted })}>Sposta serie</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="trash" style={{ marginLeft: 8 }} onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditSeries(true)}>Modifica info</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="move" onClick={() => setMoving({ eps: sorted })}>Sposta serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="trash" onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
                 </div>
                 {shown.map((e) => {
                   const seen = e.completed || (!e.isExtra && entry != null && entry.progress >= e.number);
@@ -570,7 +570,7 @@ function EditSeriesDrawer({ series, onClose, onDone }: { series: Series; onClose
       <Field label="Indirizzo del poster" value={poster} onChange={(e) => setPoster(e.target.value)} />
       <Field label="Indirizzo del banner" value={banner} onChange={(e) => setBanner(e.target.value)} />
       <label className="field"><span>Descrizione</span>
-        <div className="input"><textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} style={{ width: "100%", background: "transparent", border: 0, color: "inherit", font: "inherit", resize: "vertical", outline: "none" }} /></div>
+        <div className="input area"><textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} style={{ width: "100%", background: "transparent", border: 0, color: "inherit", font: "inherit", resize: "vertical", outline: "none" }} /></div>
       </label>
       {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>

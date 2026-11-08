@@ -94,6 +94,8 @@ button { cursor: pointer; }
 .input { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-radius: var(--r-md); background: var(--surface-card); border: 1px solid var(--border-subtle); color: var(--text-3); }
 .input:focus-within { border-color: var(--accent); }
 .input input { flex: 1; min-width: 0; height: 100%; background: transparent; border: 0; outline: 0; color: var(--text-1); font-size: 16px; }
+.input.area { height: auto; align-items: stretch; padding: 12px 16px; }
+.input.area textarea { min-height: 140px; line-height: 1.45; }
 .input.pill { border-radius: var(--r-pill); }
 .pillsearch { display: flex; align-items: center; gap: 10px; width: 100%; height: 48px; padding: 0 16px; border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); color: var(--text-2); }
 .progress { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }

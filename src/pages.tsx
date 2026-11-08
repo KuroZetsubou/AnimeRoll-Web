@@ -322,6 +322,7 @@ export function TitlePage() {
   // "Sposta": give one episode (or the whole series) to another AniList title, e.g. the right season.
   const [moving, setMoving] = useState<{ eps: Episode[] }>();
   const [editing, setEditing] = useState<Episode>();
+  const [editSeries, setEditSeries] = useState(false);
 
   const bg = (loc.state as { bg?: { pathname: string; search?: string } } | null)?.bg;
   const close = () => nav(bg ? `${bg.pathname}${bg.search ?? ""}` : "/");
@@ -453,6 +454,7 @@ export function TitlePage() {
               <>
                 <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
                   {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote("Riparazione inviata al NAS")).catch((e) => setNote(e.message))}>Ripara serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="edit" style={{ marginLeft: 8 }} onClick={() => setEditSeries(true)}>Modifica info</Button>}
                   {series && <Button size="sm" variant="ghost" icon="move" style={{ marginLeft: 8 }} onClick={() => setMoving({ eps: sorted })}>Sposta serie</Button>}
                   {series && <Button size="sm" variant="ghost" icon="trash" style={{ marginLeft: 8 }} onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
                 </div>
@@ -512,6 +514,8 @@ export function TitlePage() {
           </div>
         </Drawer>
       )}
+      {editSeries && series && <EditSeriesDrawer series={series} onClose={() => setEditSeries(false)}
+        onDone={(relinked) => { setEditSeries(false); if (relinked) nav("/library"); else load(); }} />}
       {editing && <EditEpisodeDrawer ep={editing} onClose={() => setEditing(undefined)} onDone={() => { setEditing(undefined); load(); }} />}
       {moving && <MoveDrawer eps={moving.eps} fromTitle={title} onClose={() => setMoving(undefined)}
         onDone={(seriesId) => { setMoving(undefined); if (seriesId !== series?.id) nav(`/series/${seriesId}`); else load(); }} />}
@@ -537,6 +541,44 @@ export function TitlePage() {
       {sources && <SourcesDrawer title={title} aniListId={media?.id ?? series?.aniListId} seriesId={series?.id} onClose={() => { setSources(false); load(); }}
         onStream={(url) => { setPlaying({ url }); setSources(false); }} />}
     </aside>
+  );
+}
+
+// ---------- Modifica info serie ----------
+function EditSeriesDrawer({ series, onClose, onDone }: { series: Series; onClose: () => void; onDone: (relinked: boolean) => void }) {
+  const [title, setTitle] = useState(series.title);
+  const [alId, setAlId] = useState(series.aniListId ? String(series.aniListId) : "");
+  const [poster, setPoster] = useState(series.posterUrl ?? "");
+  const [banner, setBanner] = useState(series.bannerUrl ?? "");
+  const [desc, setDesc] = useState(series.description ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const id = alId.trim() === "" ? 0 : Number(alId);
+  const idOk = Number.isInteger(id) && id >= 0;
+  const save = async (refresh: boolean) => {
+    setBusy(true); setError(undefined);
+    try {
+      const relinked = id !== (series.aniListId ?? 0);
+      await api.editSeries(series.id, { title, description: desc, posterUrl: poster, bannerUrl: banner, ...(relinked ? { aniListId: id } : {}), refreshFromAniList: refresh });
+      onDone(relinked);
+    } catch (e) { setError((e as Error).message); setBusy(false); }
+  };
+  return (
+    <Drawer title="Modifica info" onClose={onClose}>
+      <Field label="Titolo" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Field label="ID AniList (vuoto = nessun collegamento)" value={alId} onChange={(e) => setAlId(e.target.value)} />
+      <Field label="Indirizzo del poster" value={poster} onChange={(e) => setPoster(e.target.value)} />
+      <Field label="Indirizzo del banner" value={banner} onChange={(e) => setBanner(e.target.value)} />
+      <label className="field"><span>Descrizione</span>
+        <div className="input"><textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} style={{ width: "100%", background: "transparent", border: 0, color: "inherit", font: "inherit", resize: "vertical", outline: "none" }} /></div>
+      </label>
+      {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <Button full disabled={busy || !idOk || !title.trim()} onClick={() => save(false)}>{busy ? "Salvataggio…" : "Salva"}</Button>
+        <Button full variant="secondary" icon="ccw" disabled={busy || !idOk || id === 0} onClick={() => save(true)}>Salva e aggiorna da AniList</Button>
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>«Aggiorna da AniList» sostituisce titolo, descrizione, immagini, episodi, generi e anno con quelli di AniList.</p>
+    </Drawer>
   );
 }
 

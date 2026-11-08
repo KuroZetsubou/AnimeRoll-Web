@@ -121,6 +121,8 @@ export const api = {
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
   aniListRelations: (id: number) => call<Related[]>("GET", `/api/anilist/media/${id}/relations`).catch(() => [] as Related[]),
   setAniListProgress: (mediaId: number, progress: number) => call("PUT", `/api/anilist/entry/${mediaId}/progress`, { progress }),
+  editSeries: (id: number, edit: { title?: string; description?: string; posterUrl?: string; bannerUrl?: string; aniListId?: number; refreshFromAniList?: boolean }) =>
+    call<Series>("PATCH", `/api/library/series/${id}`, edit),
   editEpisode: (id: number, number: number, isExtra: boolean) => call("PATCH", `/api/library/episodes/${id}`, { number, isExtra }),
   moveEpisodes: (episodeIds: number[], aniListId: number, numberOffset: number) =>
     call<{ seriesId: number; moved: number }>("POST", "/api/library/episodes/move", { episodeIds, aniListId, numberOffset }),

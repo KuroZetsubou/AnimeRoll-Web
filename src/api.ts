@@ -14,8 +14,10 @@ export type Series = {
 };
 export type Episode = {
   id: number; seriesId: number; number: number; title?: string; sizeBytes: number; durationSeconds?: number;
-  source: string; positionSeconds?: number; completed: boolean;
+  source: string; positionSeconds?: number; completed: boolean; isExtra?: boolean;
 };
+/** "5", or "X1" for extras so "E" + label reads "EX1". */
+export const epLabel = (e: { number: number; isExtra?: boolean }) => (e.isExtra ? "X" : "") + e.number;
 export type Home = {
   continueWatching: { series: Series; episode: Episode }[];
   recentlyAdded: Series[]; aniListWatching: Entry[]; trending: Media[]; seasonal: Media[];
@@ -119,6 +121,7 @@ export const api = {
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
   aniListRelations: (id: number) => call<Related[]>("GET", `/api/anilist/media/${id}/relations`).catch(() => [] as Related[]),
   setAniListProgress: (mediaId: number, progress: number) => call("PUT", `/api/anilist/entry/${mediaId}/progress`, { progress }),
+  editEpisode: (id: number, number: number, isExtra: boolean) => call("PATCH", `/api/library/episodes/${id}`, { number, isExtra }),
   moveEpisodes: (episodeIds: number[], aniListId: number, numberOffset: number) =>
     call<{ seriesId: number; moved: number }>("POST", "/api/library/episodes/move", { episodeIds, aniListId, numberOffset }),
   aniListRecommendations: (id: number) => call<Media[]>("GET", `/api/anilist/media/${id}/recommendations`).catch(() => [] as Media[]),

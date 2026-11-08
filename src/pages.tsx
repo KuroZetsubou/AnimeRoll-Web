@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  api, AudioTrack, Entry, Related, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, StorageInfo, SourceResult,
+  api, epLabel, AudioTrack, Entry, Related, Episode, Home, Job, Media, pickSubtitle, PasskeyInfo, Provider, QueueSettings, Series, SourceEpisode, StorageInfo, SourceResult,
   stripHtml, Subtitle, TelegramChannel, TelegramStatus, User,
 } from "./api";
 import { Badge, Button, Chip, Drawer, Empty, Field, fmtTime, Group, Icon, IconButton, PosterCard, Progress, Segmented, SettingsRow, Shelf, useCompact } from "./ui";
@@ -104,7 +104,7 @@ export function HomePage() {
       )}
       <Shelf title="Continua a guardare">
         {home.continueWatching.map(({ series, episode }) => (
-          <PosterCard key={episode.id} landscape to={`/series/${series.id}?play=${episode.id}`} title={series.title} meta={`Episodio ${episode.number}`}
+          <PosterCard key={episode.id} landscape to={`/series/${series.id}?play=${episode.id}`} title={series.title} meta={`Episodio ${epLabel(episode)}`}
             img={series.bannerUrl ?? series.posterUrl} progress={pct(episode)} />
         ))}
       </Shelf>
@@ -321,6 +321,7 @@ export function TitlePage() {
   const [confirm, setConfirm] = useState<{ kind: "episode"; ep: Episode } | { kind: "series" }>();
   // "Sposta": give one episode (or the whole series) to another AniList title, e.g. the right season.
   const [moving, setMoving] = useState<{ eps: Episode[] }>();
+  const [editing, setEditing] = useState<Episode>();
 
   const bg = (loc.state as { bg?: { pathname: string; search?: string } } | null)?.bg;
   const close = () => nav(bg ? `${bg.pathname}${bg.search ?? ""}` : "/");
@@ -353,12 +354,13 @@ export function TitlePage() {
     setPlaying({ url: s.url, episode: ep, resumeAt: s.resumeAt, subtitles: s.subtitles ?? [], fonts: s.fonts ?? [], audioTracks: s.audioTracks ?? [] });
   };
 
-  const sorted = useMemo(() => [...episodes].sort((a, b) => a.number - b.number), [episodes]);
+  const sorted = useMemo(() => [...episodes].sort((a, b) => Number(!!a.isExtra) - Number(!!b.isExtra) || a.number - b.number), [episodes]);
   const nextEp = useMemo(() => {
     const inProgress = sorted.find((e) => (e.positionSeconds ?? 0) > 5 && !e.completed);
     if (inProgress) return inProgress;
-    const last = sorted.map((e) => e.completed).lastIndexOf(true);
-    return sorted[last + 1] ?? sorted[0];
+    const regular = sorted.filter((e) => !e.isExtra);
+    const last = regular.map((e) => e.completed).lastIndexOf(true);
+    return regular[last + 1] ?? sorted[0];
   }, [sorted]);
 
   const title = media?.title ?? series?.title ?? "";
@@ -433,7 +435,7 @@ export function TitlePage() {
 
         {nextEp ? (
           <div className="d-actions">
-            <Button icon="play" onClick={() => play(nextEp)}>{(nextEp.positionSeconds ?? 0) > 5 && !nextEp.completed ? `Riprendi E${nextEp.number}` : `Guarda E${nextEp.number}`}</Button>
+            <Button icon="play" onClick={() => play(nextEp)}>{(nextEp.positionSeconds ?? 0) > 5 && !nextEp.completed ? `Riprendi E${epLabel(nextEp)}` : `Guarda E${epLabel(nextEp)}`}</Button>
             <Button variant="secondary" icon="search" onClick={() => setSources(true)}>Trova episodi</Button>
           </div>
         ) : loaded && (
@@ -455,18 +457,19 @@ export function TitlePage() {
                   {series && <Button size="sm" variant="ghost" icon="trash" style={{ marginLeft: 8 }} onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
                 </div>
                 {shown.map((e) => {
-                  const seen = e.completed || (entry != null && entry.progress >= e.number);
+                  const seen = e.completed || (!e.isExtra && entry != null && entry.progress >= e.number);
                   const p = pct(e);
                   return (
                     <div key={e.id} className={`ep${playing?.episode?.id === e.id ? " active" : ""}`}>
-                      <div className={`n${seen ? " seen" : ""}`} onClick={() => play(e)}>{seen ? <Icon name="check" size={18} /> : e.number}</div>
+                      <div className={`n${seen ? " seen" : ""}`} onClick={() => play(e)}>{seen ? <Icon name="check" size={18} /> : epLabel(e)}</div>
                       <div className="x" onClick={() => play(e)}>
-                        <b>{e.title || `Episodio ${e.number}`}</b>
+                        <b>{e.title || `Episodio ${epLabel(e)}`}</b>
                         <small>{meta(e.durationSeconds && `${Math.round(e.durationSeconds / 60)} min`, `${(e.sizeBytes / 1048576).toFixed(0)} MB`, e.source)}</small>
                         {p != null && !e.completed && <Progress value={p} />}
                       </div>
                       <IconButton icon="wrench" label="Ripara sul NAS" title="Ripara sul NAS: riallinea audio/video e sottotitoli"
                         onClick={() => api.repairEpisode(e.id).then(() => setNote("Riparazione inviata al NAS")).catch((x) => setNote(x.message))} />
+                      <IconButton icon="edit" label="Modifica numero" title="Modifica numero / contenuto extra" onClick={() => setEditing(e)} />
                       <IconButton icon="move" label="Sposta in un'altra serie" title="Sposta in un'altra serie" onClick={() => setMoving({ eps: [e] })} />
                       <IconButton icon="trash" label="Elimina dal NAS" title="Elimina dal NAS" onClick={() => setConfirm({ kind: "episode", ep: e })} />
                     </div>
@@ -509,6 +512,7 @@ export function TitlePage() {
           </div>
         </Drawer>
       )}
+      {editing && <EditEpisodeDrawer ep={editing} onClose={() => setEditing(undefined)} onDone={() => { setEditing(undefined); load(); }} />}
       {moving && <MoveDrawer eps={moving.eps} fromTitle={title} onClose={() => setMoving(undefined)}
         onDone={(seriesId) => { setMoving(undefined); if (seriesId !== series?.id) nav(`/series/${seriesId}`); else load(); }} />}
       {statusSheet && (
@@ -533,6 +537,31 @@ export function TitlePage() {
       {sources && <SourcesDrawer title={title} aniListId={media?.id ?? series?.aniListId} seriesId={series?.id} onClose={() => { setSources(false); load(); }}
         onStream={(url) => { setPlaying({ url }); setSources(false); }} />}
     </aside>
+  );
+}
+
+// ---------- Modifica numero ----------
+function EditEpisodeDrawer({ ep, onClose, onDone }: { ep: Episode; onClose: () => void; onDone: () => void }) {
+  const [num, setNum] = useState(String(ep.number));
+  const [extra, setExtra] = useState(!!ep.isExtra);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const n = Number(num.replace(",", "."));
+  const ok = num.trim() !== "" && Number.isFinite(n) && n >= 0;
+  const save = async () => {
+    setBusy(true); setError(undefined);
+    try { await api.editEpisode(ep.id, n, extra); onDone(); }
+    catch (e) { setError((e as Error).message); setBusy(false); }
+  };
+  return (
+    <Drawer title="Modifica numero" onClose={onClose}>
+      <Field label="Numero" value={num} onChange={(e) => setNum(e.target.value)} />
+      <SettingsRow icon="plus" label="Contenuto extra" value={`Compare come EX${num} e non conta per AniList`} toggle={extra} onToggle={setExtra} />
+      {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <Button full disabled={busy || !ok} onClick={save}>{busy ? "Salvataggio…" : "Salva"}</Button>
+      </div>
+    </Drawer>
   );
 }
 
@@ -706,7 +735,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
       <div className={`ui${show ? "" : " hide"}`} onClick={(e) => e.stopPropagation()}>
         <div className="top">
           <IconButton icon="chevdown" label="Chiudi" onClick={onClose} />
-          <div className="tt"><h3>{title}</h3>{episode && <small>Episodio {episode.number}{episode.title ? ` · ${episode.title}` : ""}</small>}</div>
+          <div className="tt"><h3>{title}</h3>{episode && <small>Episodio {epLabel(episode)}{episode.title ? ` · ${episode.title}` : ""}</small>}</div>
           {pip && <IconButton icon="pip" label="Picture in Picture" onClick={() => (document.pictureInPictureElement ? document.exitPictureInPicture() : v().requestPictureInPicture()).catch(() => {})} />}
         </div>
         <div className="mid">
@@ -718,7 +747,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
           <div className="bot">
             {t < 150 ? <button className="btn sm glass" style={{ color: "#fff" }} onClick={() => (v().currentTime = t + 85)}><Icon name="ff" size={18} />Salta sigla</button> : <span />}
             {credits && next && (
-              <div className="next glass"><div><small>Prossimo episodio</small><b>E{next.number}{next.title ? ` · ${next.title}` : ""}</b></div><Button size="sm" onClick={() => onNext(next)}>Avvia</Button></div>
+              <div className="next glass"><div><small>Prossimo episodio</small><b>E{epLabel(next)}{next.title ? ` · ${next.title}` : ""}</b></div><Button size="sm" onClick={() => onNext(next)}>Avvia</Button></div>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
@@ -739,8 +768,8 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
               const cur = e.id === episode?.id;
               return (
                 <div key={e.id} className={`ep${cur ? " active" : ""}`} onClick={() => { setList(false); if (!cur) onNext(e); }} style={{ cursor: "pointer" }}>
-                  <div className={`n${e.completed && !cur ? " seen" : ""}`}>{e.completed && !cur ? <Icon name="check" size={18} /> : e.number}</div>
-                  <div className="x"><b>{e.title || `Episodio ${e.number}`}</b>{e.durationSeconds ? <small>{Math.round(e.durationSeconds / 60)} min</small> : null}</div>
+                  <div className={`n${e.completed && !cur ? " seen" : ""}`}>{e.completed && !cur ? <Icon name="check" size={18} /> : epLabel(e)}</div>
+                  <div className="x"><b>{e.title || `Episodio ${epLabel(e)}`}</b>{e.durationSeconds ? <small>{Math.round(e.durationSeconds / 60)} min</small> : null}</div>
                 </div>
               );
             })}

@@ -25,6 +25,7 @@ const P: Record<string, React.ReactNode> = {
   audio: <><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 11v2" /></>,
   move: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   minus: <path d="M5 12h14" />,
+  edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
   captions: <><rect width="18" height="14" x="3" y="5" rx="2" /><path d="M7 15h4M15 15h2M7 11h2M13 11h4" /></>,
   calendar: <><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
   trash: <><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></>,

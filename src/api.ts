@@ -4,7 +4,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 export type User = { id: string; username: string; aniListConnected: boolean; aniListUserName?: string; passkeyCount: number };
 export type Media = {
   id: number; title: string; titleRomaji?: string; description?: string; coverUrl?: string; bannerUrl?: string;
-  episodes?: number; year?: number; format?: string; genres: string[]; averageScore?: number;
+  episodes?: number; year?: number; format?: string; genres: string[]; averageScore?: number; status?: string; nextAiringEpisode?: number; nextAiringAt?: number;
 };
 export type Related = { relation: string; media: Media };
 export type Entry = { media: Media; status: string; progress: number };

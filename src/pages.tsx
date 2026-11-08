@@ -419,6 +419,11 @@ export function TitlePage() {
           <span>{meta(media?.year, media?.genres.slice(0, 3).join(" · "), (media?.episodes ?? series?.totalEpisodes) && `${media?.episodes ?? series?.totalEpisodes} episodi`, media?.averageScore && `★ ${media.averageScore}%`)}</span>
           {sorted.length > 0 && <Badge>Sul NAS</Badge>}
         </div>
+        {media?.nextAiringAt && media.nextAiringEpisode && (
+          <div className="meta" style={{ marginTop: 6, color: "var(--teal-500)" }}>
+            Prossimo episodio (E{media.nextAiringEpisode}): {new Date(media.nextAiringAt * 1000).toLocaleString("it-IT", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </div>
+        )}
 
         {media && (entry
           ? <button className="al-row" onClick={() => setStatusSheet(true)}><Icon name="link" size={18} color="var(--teal-500)" />

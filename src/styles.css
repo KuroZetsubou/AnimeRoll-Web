@@ -253,3 +253,24 @@ button.row-s:hover { background: rgba(255, 255, 255, 0.04); }
 video::cue { font: 600 22px var(--font-body); background: rgba(0, 0, 0, 0.55); }
 
 .similar-h { margin: 22px 0 4px; font-size: 16px; }
+
+/* ---------- Profiles ---------- */
+.avatar { display: inline-grid; place-items: center; flex: none; border-radius: 28%; color: #fff; font-family: var(--font-display); font-weight: 800; line-height: 1; }
+.avatar.add { width: 96px; height: 96px; background: var(--surface-card); border: 1px dashed var(--border-strong); color: var(--text-2); }
+.avatar-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.avatar-row button { padding: 3px; border-radius: 32%; border: 2px solid transparent; background: none; }
+.avatar-row button.on { border-color: var(--accent); }
+.picker { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 28px; padding: 32px 16px; background: radial-gradient(120% 60% at 50% 0%, #4a1f0c, var(--bg-app) 70%); }
+.picker h1 { font-size: 32px; text-align: center; }
+.picker-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; max-width: 760px; }
+.picker-grid button { display: grid; justify-items: center; gap: 10px; background: none; border: 0; color: var(--text-2); font-weight: 600; font-size: 16px; }
+.picker-grid button:hover { color: var(--text-1); }
+.picker-grid button:hover .avatar { outline: 3px solid var(--text-1); }
+.picker-grid span:not(.avatar) { display: inline-flex; align-items: center; gap: 6px; }
+.sheet-h { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin: 16px 0 4px; }
+.score-row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; margin: 8px 0; }
+.score-row button { height: 40px; border-radius: var(--r-md); border: 1px solid var(--border-strong); background: transparent; font-weight: 700; }
+.score-row button.on { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.score-row button:disabled { opacity: 0.4; }
+@media (max-width: 480px) { .score-row { grid-template-columns: repeat(5, 1fr); } }
+.sidebar .user-link { display: flex; align-items: center; gap: 10px; }

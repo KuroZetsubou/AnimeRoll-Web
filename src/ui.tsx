@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
+import { t } from "./i18n";
 
 // Lucide-style stroke icons (2px, 24 grid), inlined so the app has no CDN dependency.
 const P: Record<string, React.ReactNode> = {
@@ -99,7 +100,7 @@ export function Drawer({ title, onClose, children }: { title?: string; onClose: 
   return createPortal(
     <div className="backdrop" onClick={onClose}>
       <div className="drawer" onClick={(e) => e.stopPropagation()}>
-        {title && <header><h2>{title}</h2><IconButton icon="x" label="Chiudi" onClick={onClose} /></header>}
+        {title && <header><h2>{title}</h2><IconButton icon="x" label={t("Close")} onClick={onClose} /></header>}
         {children}
       </div>
     </div>,

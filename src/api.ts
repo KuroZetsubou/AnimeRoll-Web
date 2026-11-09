@@ -1,13 +1,23 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 // Same JSON as AnimeRoll.Server (camelCase).
-export type User = { id: string; username: string; aniListConnected: boolean; aniListUserName?: string; passkeyCount: number };
+export type User = {
+  id: string; username: string; aniListConnected: boolean; aniListUserName?: string; passkeyCount: number;
+  avatar: number; hasPasscode: boolean; tracker?: "anilist" | "mal"; malConnected: boolean; malUserName?: string;
+};
+export type Profile = { id: string; name: string; avatar: number; hasPasscode: boolean; isCurrent: boolean; isOwner: boolean };
+export type TrackerAccount = { configured: boolean; connected: boolean; userName?: string };
+export type TrackerInfo = { active?: "anilist" | "mal"; aniList: TrackerAccount; mal: TrackerAccount };
+export type EntryUpdate = { status?: string; progress?: number; score?: number };
+/** AniList statuses, also used for MyAnimeList (translated on the server). */
+export const LIST_STATUSES = ["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"] as const;
 export type Media = {
   id: number; title: string; titleRomaji?: string; description?: string; coverUrl?: string; bannerUrl?: string;
   episodes?: number; year?: number; format?: string; genres: string[]; averageScore?: number; status?: string; nextAiringEpisode?: number; nextAiringAt?: number;
 };
 export type Related = { relation: string; media: Media };
-export type Entry = { media: Media; status: string; progress: number };
+/** score is 0-10, 0 or missing = not rated. */
+export type Entry = { media: Media; status: string; progress: number; score?: number };
 export type Series = {
   id: number; aniListId?: number; title: string; description?: string; posterUrl?: string; bannerUrl?: string;
   totalEpisodes?: number; episodeCount: number;
@@ -75,7 +85,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   if (res.status === 401 && auth.token) { auth.token = null; location.reload(); }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? err.detail ?? `Errore ${res.status}`);
+    throw new Error(err.error ?? err.detail ?? `Error ${res.status}`);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -117,10 +127,23 @@ export const api = {
     call("PUT", `/api/library/episodes/${episodeId}/progress`, { positionSeconds, durationSeconds }),
 
   aniListMedia: (id: number) => call<Media>("GET", `/api/anilist/media/${id}`),
-  aniListEntry: (id: number) => call<Entry | null>("GET", `/api/anilist/entry/${id}`).catch(() => null),
+  trackerEntry: (id: number) => call<Entry | null>("GET", `/api/tracker/entry/${id}`).catch(() => null),
+  saveEntry: (mediaId: number, u: EntryUpdate) => call("PUT", `/api/tracker/entry/${mediaId}`, u),
+  trackerList: (status: string) => call<Entry[]>("GET", `/api/tracker/list/${status}`),
+  tracker: () => call<TrackerInfo>("GET", "/api/tracker"),
+  setActiveTracker: (provider: "anilist" | "mal") => call<TrackerInfo>("PUT", "/api/tracker/active", { provider }),
+  malConnect: () => call<{ url: string }>("GET", "/api/tracker/mal/connect?client=web"),
+  malDisconnect: () => call("DELETE", "/api/tracker/mal/connect"),
+
+  profiles: () => call<Profile[]>("GET", "/api/profiles"),
+  createProfile: (name: string, avatar: number, passcode?: string) => call<Profile>("POST", "/api/profiles", { name, avatar, passcode }),
+  updateProfile: (id: string, u: { name?: string; avatar?: number }) => call<Profile>("PATCH", `/api/profiles/${id}`, u),
+  setPasscode: (current: string | undefined, passcode: string | null) => call("PUT", "/api/profiles/me/passcode", { current, passcode }),
+  enterProfile: (id: string, passcode?: string) => call<AuthResponse>("POST", `/api/profiles/${id}/enter`, { passcode }),
+  deleteProfile: (id: string, passcode?: string) => call("DELETE", `/api/profiles/${id}${passcode ? `?passcode=${encodeURIComponent(passcode)}` : ""}`),
+  setPassword: (current: string | undefined, newPassword: string) => call("PUT", "/api/auth/password", { current, newPassword }),
   aniListSearch: (q: string) => call<Media[]>("GET", `/api/anilist/search?q=${encodeURIComponent(q)}`),
   aniListRelations: (id: number) => call<Related[]>("GET", `/api/anilist/media/${id}/relations`).catch(() => [] as Related[]),
-  setAniListProgress: (mediaId: number, progress: number) => call("PUT", `/api/anilist/entry/${mediaId}/progress`, { progress }),
   editSeries: (id: number, edit: { title?: string; description?: string; posterUrl?: string; bannerUrl?: string; aniListId?: number; refreshFromAniList?: boolean }) =>
     call<Series>("PATCH", `/api/library/series/${id}`, edit),
   editEpisode: (id: number, number: number, isExtra: boolean) => call("PATCH", `/api/library/episodes/${id}`, { number, isExtra }),
@@ -129,8 +152,6 @@ export const api = {
   aniListRecommendations: (id: number) => call<Media[]>("GET", `/api/anilist/media/${id}/recommendations`).catch(() => [] as Media[]),
   aniListBrowse: (season: string, year: number, genre?: string) =>
     call<Media[]>("GET", `/api/anilist/browse?season=${season}&year=${year}${genre ? `&genre=${encodeURIComponent(genre)}` : ""}`),
-  aniListList: (status: string) => call<Entry[]>("GET", `/api/anilist/list/${status}`),
-  setAniListStatus: (mediaId: number, status: string) => call("PUT", `/api/anilist/entry/${mediaId}/status`, { status }),
   aniListDisconnect: () => call("DELETE", "/api/anilist/connect"),
   passkeys: () => call<PasskeyInfo[]>("GET", "/api/auth/passkeys"),
   deletePasskey: (id: number) => call("DELETE", `/api/auth/passkeys/${id}`),
@@ -139,7 +160,7 @@ export const api = {
   telegramChannels: () => call<TelegramChannel[]>("GET", "/api/telegram/channels"),
   saveTelegramChannels: (c: TelegramChannel[]) => call("PUT", "/api/telegram/channels", c),
   scanInbox: () => call<unknown>("POST", "/api/library/scan-inbox"),
-  aniListConnect: () => call<{ url: string }>("GET", "/api/anilist/connect"),
+  aniListConnect: () => call<{ url: string }>("GET", "/api/anilist/connect?client=web"),
 
   providers: () => call<Provider[]>("GET", "/api/sources"),
   search: (source: string, q: string) => call<SourceResult[]>("GET", `/api/sources/${source}/search?q=${encodeURIComponent(q)}`),
@@ -148,7 +169,7 @@ export const api = {
   sourceStream: (source: string, ref: string) =>
     call<{ url: string }>("GET", `/api/sources/${source}/stream?ref=${encodeURIComponent(ref)}`),
 
-  sendToNas: (source: string, seriesTitle: string, aniListId: number | undefined, items: { sourceRef: string; episodeNumber?: number }[]) =>
+  sendToServer: (source: string, seriesTitle: string, aniListId: number | undefined, items: { sourceRef: string; episodeNumber?: number }[]) =>
     call<Job[]>("POST", "/api/downloads", { source, seriesTitle, aniListId, items }),
   jobs: () => call<Job[]>("GET", "/api/downloads"),
   cancelJob: (id: string) => call("POST", `/api/downloads/${id}/cancel`),
@@ -170,7 +191,7 @@ export const api = {
     if (aniListId) form.append("aniListId", String(aniListId));
     if (episodeNumber !== undefined) form.append("episodeNumber", String(episodeNumber));
     const res = await fetch("/api/library/upload", { method: "POST", body: form, headers: { Authorization: `Bearer ${auth.token}` } });
-    if (!res.ok) throw new Error(`Upload fallito (${res.status})`);
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   },
 };
 

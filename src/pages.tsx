@@ -6,8 +6,10 @@ import {
   stripHtml, Subtitle, TelegramChannel, TelegramStatus, User,
 } from "./api";
 import { Badge, Button, Chip, Drawer, Empty, Field, fmtTime, Group, Icon, IconButton, PosterCard, Progress, Segmented, SettingsRow, Shelf, useCompact } from "./ui";
+import { dateLocale, t } from "./i18n";
+import { LanguageGroup, ListStatusDrawer, ProfileGroups, TrackerGroup } from "./profiles";
 
-const ALSTATUS: Record<string, string> = { CURRENT: "In corso", PLANNING: "Pianificato", COMPLETED: "Completato", PAUSED: "In pausa", DROPPED: "Abbandonato" };
+const ALSTATUS: Record<string, string> = { CURRENT: t("Watching"), PLANNING: t("Planning"), COMPLETED: t("Completed"), PAUSED: t("Paused"), DROPPED: t("Dropped"), REPEATING: t("Rewatching") };
 const meta = (...p: (string | number | undefined | null | false)[]) => p.filter(Boolean).join(" · ");
 const gb = (b: number) => (b >= 1 << 30 ? `${(b / 2 ** 30).toFixed(1)} GB` : `${Math.round(b / 2 ** 20)} MB`);
 const pct = (e: Episode) => (e.positionSeconds && e.durationSeconds ? (e.positionSeconds / e.durationSeconds) * 100 : undefined);
@@ -30,15 +32,15 @@ export function LoginPage({ onLogin }: { onLogin: (token: string, user: User) =>
     <div className="login">
       <form onSubmit={(e) => { e.preventDefault(); run(() => register ? api.register(username, password) : api.login(username, password)); }}>
         <div className="logo-big">Anime<b>Roll</b></div>
-        <p className="sub">Il tuo catalogo anime sul NAS</p>
-        <Field label="Username" icon="user" autoComplete="username webauthn" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <Field label="Password" icon="lock" type="password" placeholder="••••••••" autoComplete={register ? "new-password" : "current-password"}
+        <p className="sub">{t("Your anime catalog on your server")}</p>
+        <Field label={t("Username")} icon="user" autoComplete="username webauthn" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <Field label={t("Password")} icon="lock" type="password" placeholder="••••••••" autoComplete={register ? "new-password" : "current-password"}
           value={password} onChange={(e) => setPassword(e.target.value)} />
-        <Button size="lg" full style={{ marginTop: 10 }} disabled={!username || !password}>{register ? "Crea account" : "Accedi"}</Button>
-        <Button type="button" size="lg" variant="ghost" full icon="key" onClick={() => run(() => api.passkeyLogin(username || undefined))}>Accedi con passkey</Button>
+        <Button size="lg" full style={{ marginTop: 10 }} disabled={!username || !password}>{register ? t("Create account") : t("Sign in")}</Button>
+        <Button type="button" size="lg" variant="ghost" full icon="key" onClick={() => run(() => api.passkeyLogin(username || undefined))}>{t("Sign in with passkey")}</Button>
         {error && <p className="error">{error}</p>}
-        <p className="alt">{register ? "Hai già un account? " : "Primo avvio? "}
-          <button type="button" onClick={() => setRegister(!register)}>{register ? "Accedi" : "Crea l'account"}</button></p>
+        <p className="alt">{register ? t("Already have an account? ") : t("First time here? ")}
+          <button type="button" onClick={() => setRegister(!register)}>{register ? t("Sign in") : t("Create the account")}</button></p>
       </form>
     </div>
   );
@@ -49,19 +51,19 @@ export function HomePage() {
   const [home, setHome] = useState<Home>();
   const [planning, setPlanning] = useState<Entry[]>([]);
   const [error, setError] = useState<string>();
-  const [genre, setGenre] = useState("Tutti");
+  const [genre, setGenre] = useState(t("All"));
   const [slide, setSlide] = useState(0);
   useEffect(() => {
     api.home().then(setHome).catch((e) => setError(e.message));
-    api.aniListList("PLANNING").then(setPlanning).catch(() => {});
+    api.trackerList("PLANNING").then(setPlanning).catch(() => {});
   }, []);
 
-  const inGenre = useCallback((m: Media) => genre === "Tutti" || m.genres.includes(genre), [genre]);
+  const inGenre = useCallback((m: Media) => genre === t("All") || m.genres.includes(genre), [genre]);
   const genres = useMemo(() => {
     const count = new Map<string, number>();
     [...(home?.trending ?? []), ...(home?.seasonal ?? []), ...(home?.aniListWatching.map((e) => e.media) ?? [])]
       .forEach((m) => m.genres.forEach((g) => count.set(g, (count.get(g) ?? 0) + 1)));
-    return ["Tutti", ...[...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([g]) => g)];
+    return [t("All"), ...[...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([g]) => g)];
   }, [home]);
   const featured = useMemo(() => {
     const all = [...(home?.aniListWatching.map((e) => e.media) ?? []), ...(home?.trending ?? [])].filter(inGenre);
@@ -78,13 +80,13 @@ export function HomePage() {
   const swipe = (dx: number) => { if (Math.abs(dx) > 40 && featured.length > 1) setSlide((s) => (s + (dx < 0 ? 1 : featured.length - 1)) % featured.length); };
 
   if (error) return <p className="error page">{error}</p>;
-  if (!home) return <div className="center">Caricamento…</div>;
+  if (!home) return <div className="center">{t("Loading…")}</div>;
   const f = featured[slide % Math.max(1, featured.length)];
 
   return (
     <main>
       <div className="home-top">
-        <Link to="/search" className="pillsearch"><Icon name="search" size={20} />Cerca nella libreria e su AniList</Link>
+        <Link to="/search" className="pillsearch"><Icon name="search" size={20} />{t("Search the library and AniList")}</Link>
         <div className="chips">{genres.map((g) => <Chip key={g} on={g === genre} onClick={() => { setGenre(g); setSlide(0); }}>{g}</Chip>)}</div>
       </div>
       {f && (
@@ -93,40 +95,40 @@ export function HomePage() {
             onTouchEnd={(e) => { if (touch.current != null) swipe(e.changedTouches[0].clientX - touch.current); touch.current = null; }} to={`/anime/${f.id}`} state={{ bg: (loc.state as { bg?: unknown } | null)?.bg ?? loc }}
             style={(f.bannerUrl ?? f.coverUrl) ? { backgroundImage: `url(${f.bannerUrl ?? f.coverUrl})` } : undefined}>
             <div className="body">
-              <Badge>In evidenza</Badge>
+              <Badge>{t("Featured")}</Badge>
               <h1>{f.title}</h1>
-              <div className="meta">{meta(f.year, f.genres.slice(0, 3).join(" · "), f.episodes && `${f.episodes} episodi`)}</div>
-              <span className="btn sm"><Icon name="info" size={16} />Scopri</span>
+              <div className="meta">{meta(f.year, f.genres.slice(0, 3).join(" · "), f.episodes && t("{n} episodes", { n: f.episodes }))}</div>
+              <span className="btn sm"><Icon name="info" size={16} />{t("Discover")}</span>
             </div>
             {featured.length > 1 && <div className="dots">{featured.map((m, i) => <i key={m.id} className={i === slide % featured.length ? "on" : ""} />)}</div>}
           </Link>
         </div>
       )}
-      <Shelf title="Continua a guardare">
+      <Shelf title={t("Continue watching")}>
         {home.continueWatching.map(({ series, episode }) => (
-          <PosterCard key={episode.id} landscape to={`/series/${series.id}?play=${episode.id}`} title={series.title} meta={`Episodio ${epLabel(episode)}`}
+          <PosterCard key={episode.id} landscape to={`/series/${series.id}?play=${episode.id}`} title={series.title} meta={t("Episode {n}", { n: epLabel(episode) })}
             img={series.bannerUrl ?? series.posterUrl} progress={pct(episode)} />
         ))}
       </Shelf>
-      <Shelf title="Stai guardando su AniList">
+      <Shelf title={t("Watching on your list")}>
         {home.aniListWatching.filter((e) => inGenre(e.media)).map((e) => (
-          <PosterCard key={e.media.id} to={`/anime/${e.media.id}`} title={e.media.title} img={e.media.coverUrl} meta={`${e.progress}/${e.media.episodes ?? "?"} episodi`} />
+          <PosterCard key={e.media.id} to={`/anime/${e.media.id}`} title={e.media.title} img={e.media.coverUrl} meta={t("{n}/{total} episodes", { n: e.progress, total: e.media.episodes ?? "?" })} />
         ))}
       </Shelf>
-      <Shelf title="Pianificati da vedere">
+      <Shelf title={t("Planned to watch")}>
         {planning.filter((e) => inGenre(e.media)).map((e) => (
-          <PosterCard key={e.media.id} to={`/anime/${e.media.id}`} title={e.media.title} img={e.media.coverUrl} meta={meta(e.media.episodes && `${e.media.episodes} episodi`, e.media.genres[0])} />
+          <PosterCard key={e.media.id} to={`/anime/${e.media.id}`} title={e.media.title} img={e.media.coverUrl} meta={meta(e.media.episodes && t("{n} episodes", { n: e.media.episodes }), e.media.genres[0])} />
         ))}
       </Shelf>
-      {genre === "Tutti" && (
-        <Shelf title="Sul tuo NAS">
-          {home.recentlyAdded.map((s) => <PosterCard key={s.id} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} badge={`${s.episodeCount} ep`} />)}
+      {genre === t("All") && (
+        <Shelf title={t("On your server")}>
+          {home.recentlyAdded.map((s) => <PosterCard key={s.id} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} badge={t("{n} ep", { n: s.episodeCount })} />)}
         </Shelf>
       )}
-      <Shelf title="Questa stagione">
+      <Shelf title={t("This season")}>
         {home.seasonal.filter(inGenre).map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.genres[0]} />)}
       </Shelf>
-      <Shelf title="Di tendenza">
+      <Shelf title={t("Trending")}>
         {home.trending.filter(inGenre).slice(0, 10).map((m, i) => <PosterCard key={m.id} rank={i + 1} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} />)}
       </Shelf>
     </main>
@@ -134,8 +136,8 @@ export function HomePage() {
 }
 
 // ---------- Esplora (AniList by season + genre) ----------
-const SEASONS: [string, string][] = [["Inverno", "WINTER"], ["Primavera", "SPRING"], ["Estate", "SUMMER"], ["Autunno", "FALL"]];
-const EXPLORE_GENRES = ["Tutti", "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"];
+const SEASONS: [string, string][] = [[t("Winter"), "WINTER"], [t("Spring"), "SPRING"], [t("Summer"), "SUMMER"], [t("Fall"), "FALL"]];
+const EXPLORE_GENRES = [t("All"), "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"];
 
 function currentSeason() {
   const d = new Date();
@@ -151,21 +153,21 @@ function SeasonPicker({ value, onApply, onClose }: { value: { season: string; ye
   const body = (
     <>
       <div className="seasons">
-        <div><h4>Stagione</h4>{SEASONS.map(([n, k]) => <button key={k} className={k === season ? "on" : ""} onClick={() => setSeason(k)}>{n}{k === season && <Icon name="check" size={18} />}</button>)}</div>
-        <div><h4>Anno</h4>{years.map((y) => <button key={y} className={y === year ? "on" : ""} onClick={() => setYear(y)}>{y}{y === year && <Icon name="check" size={18} />}</button>)}</div>
+        <div><h4>{t("Season")}</h4>{SEASONS.map(([n, k]) => <button key={k} className={k === season ? "on" : ""} onClick={() => setSeason(k)}>{n}{k === season && <Icon name="check" size={18} />}</button>)}</div>
+        <div><h4>{t("Year")}</h4>{years.map((y) => <button key={y} className={y === year ? "on" : ""} onClick={() => setYear(y)}>{y}{y === year && <Icon name="check" size={18} />}</button>)}</div>
       </div>
       <Button full style={{ marginTop: 20 }} onClick={() => onApply({ season, year })}>Mostra {label} {year}</Button>
     </>
   );
   return compact ? (
     <div className="fullsheet">
-      <div className="page-head"><h1 style={{ fontSize: 28 }}>Scegli stagione</h1><IconButton icon="x" label="Chiudi" onClick={onClose} /></div>
+      <div className="page-head"><h1 style={{ fontSize: 28 }}>{t("Choose a season")}</h1><IconButton icon="x" label={t("Close")} onClick={onClose} /></div>
       {body}
     </div>
   ) : (
     <div className="backdrop" style={{ alignItems: "center" }} onClick={onClose}>
       <div className="glassmodal" onClick={(e) => e.stopPropagation()}>
-        <div className="page-head"><h2>Scegli stagione</h2><IconButton icon="x" label="Chiudi" onClick={onClose} /></div>
+        <div className="page-head"><h2>{t("Choose a season")}</h2><IconButton icon="x" label={t("Close")} onClick={onClose} /></div>
         {body}
       </div>
     </div>
@@ -175,7 +177,7 @@ function SeasonPicker({ value, onApply, onClose }: { value: { season: string; ye
 export function ExplorePage() {
   const now = useMemo(currentSeason, []);
   const [sel, setSel] = useState(now);
-  const [genre, setGenre] = useState("Tutti");
+  const [genre, setGenre] = useState(t("All"));
   const [items, setItems] = useState<Media[]>();
   const [picker, setPicker] = useState(false);
   const [error, setError] = useState<string>();
@@ -183,29 +185,29 @@ export function ExplorePage() {
   useEffect(() => { api.library().then((l) => setNas(new Set(l.map((s) => s.aniListId).filter((x): x is number => !!x)))).catch(() => {}); }, []);
   useEffect(() => {
     setItems(undefined); setError(undefined);
-    api.aniListBrowse(sel.season, sel.year, genre === "Tutti" ? undefined : genre).then(setItems)
-      .catch((e) => { setItems([]); setError(/404/.test(e.message) ? "Esplora richiede la nuova versione del server: aggiorna AnimeRoll sul NAS." : e.message); });
+    api.aniListBrowse(sel.season, sel.year, genre === t("All") ? undefined : genre).then(setItems)
+      .catch((e) => { setItems([]); setError(/404/.test(e.message) ? t("Explore needs the new server version: update AnimeRoll on your server.") : e.message); });
   }, [sel, genre]);
   const label = `${SEASONS.find((s) => s[1] === sel.season)![0]} ${sel.year}`;
   const isNow = sel.season === now.season && sel.year === now.year;
 
   return (
     <main className="page">
-      <h1>Esplora</h1>
-      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>Stagioni da AniList</p>
+      <h1>{t("Explore")}</h1>
+      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{t("Seasons from AniList")}</p>
       <div style={{ marginTop: 16 }}>
         <button className="seasonpill" onClick={() => setPicker(true)}>
-          <Icon name="calendar" size={20} color="var(--accent)" /><span className="lbl">{label}</span>{isNow && <Badge tone="teal">In corso</Badge>}<Icon name="chevdown" size={20} color="var(--text-2)" />
+          <Icon name="calendar" size={20} color="var(--accent)" /><span className="lbl">{label}</span>{isNow && <Badge tone="teal">{t("Airing")}</Badge>}<Icon name="chevdown" size={20} color="var(--text-2)" />
         </button>
       </div>
       <div className="chips" style={{ marginTop: 12 }}>{EXPLORE_GENRES.map((g) => <Chip key={g} small on={g === genre} onClick={() => setGenre(g)}>{g}</Chip>)}</div>
       <div className="page-head" style={{ marginTop: 24, marginBottom: 12 }}>
-        <h2 style={{ fontSize: 22 }}>{label}</h2>{items && <span className="muted" style={{ fontSize: 13 }}>{items.length} titoli</span>}
+        <h2 style={{ fontSize: 22 }}>{label}</h2>{items && <span className="muted" style={{ fontSize: 13 }}>{t("{n} titles", { n: items.length })}</span>}
       </div>
       {error && <p className="error">{error}</p>}
-      {items && items.length === 0 && !error && <Empty icon="calendar">Nessun titolo di questa stagione{genre !== "Tutti" ? ` per “${genre}”` : ""}</Empty>}
+      {items && items.length === 0 && !error && <Empty icon="calendar">{genre !== t("All") ? t("No titles this season for “{genre}”", { genre }) : t("No titles this season")}</Empty>}
       <div className="grid">
-        {items?.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.genres.slice(0, 2).join(" · ")} badge={nas.has(m.id) ? "NAS" : undefined} />)}
+        {items?.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.genres.slice(0, 2).join(" · ")} badge={nas.has(m.id) ? t("Server") : undefined} />)}
       </div>
       {picker && <SeasonPicker value={sel} onClose={() => setPicker(false)} onApply={(v) => { setSel(v); setPicker(false); }} />}
     </main>
@@ -240,23 +242,23 @@ export function SearchPage() {
     <main className="page">
       <div className="page-head" style={{ gap: 12 }}>
         <label className="input pill" style={{ flex: 1 }}><Icon name="search" size={20} />
-          <input autoFocus placeholder="Cerca titoli" value={q} onChange={(e) => setQ(e.target.value)} />
-          {q && <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label="Cancella" onClick={() => setQ("")}><Icon name="x" size={18} /></button>}
+          <input autoFocus placeholder={t("Search titles")} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && <button className="iconbtn" style={{ width: 32, height: 32 }} aria-label={t("Clear")} onClick={() => setQ("")}><Icon name="x" size={18} /></button>}
         </label>
-        <button style={{ background: "none", border: 0, color: "var(--accent)", fontWeight: 600 }} onClick={() => nav(-1)}>Annulla</button>
+        <button style={{ background: "none", border: 0, color: "var(--accent)", fontWeight: 600 }} onClick={() => nav(-1)}>{t("Cancel")}</button>
       </div>
       {q.trim().length < 2 ? (
         <>
-          {recents.length > 0 && <h3 style={{ fontSize: 17, margin: "20px 0 4px" }}>Recenti</h3>}
+          {recents.length > 0 && <h3 style={{ fontSize: 17, margin: "20px 0 4px" }}>{t("Recent")}</h3>}
           {recents.map((r) => <div key={r} onClick={() => setQ(r)} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 0", color: "var(--text-2)", cursor: "pointer" }}><Icon name="search" size={18} />{r}</div>)}
-          <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>I risultati mescolano la libreria NAS e AniList.</p>
+          <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>{t("Results mix your server library and AniList.")}</p>
         </>
       ) : (
         <>
-          {results && results.length === 0 && nas.length === 0 && <Empty icon="search">Nessun risultato per “{q}”</Empty>}
+          {results && results.length === 0 && nas.length === 0 && <Empty icon="search">{t("No results for “{q}”", { q })}</Empty>}
           <div className="grid" style={{ marginTop: 20 }}>
-            {nas.map((s) => <PosterCard key={`s${s.id}`} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} badge="NAS" meta={`${s.episodeCount} ep`} />)}
-            {results?.filter((m) => !nasIds.has(m.id)).map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} badge="AniList" meta={m.year?.toString()} />)}
+            {nas.map((s) => <PosterCard key={`s${s.id}`} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} badge={t("Server")} meta={`${s.episodeCount} ep`} />)}
+            {results?.filter((m) => !nasIds.has(m.id)).map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} badge={t("AniList")} meta={m.year?.toString()} />)}
           </div>
         </>
       )}
@@ -272,29 +274,29 @@ export function LibraryPage() {
   const reload = () => api.library().then(setSeries);
   useEffect(() => { reload(); }, []);
   const onFiles = async (files: FileList | null) => {
-    const title = prompt("Titolo della serie per questi file?");
+    const title = prompt(t("Series title for these files?"));
     if (!files || !title) return;
     for (const [i, f] of Array.from(files).entries()) {
-      setMsg(`Carico ${i + 1}/${files.length}: ${f.name}`);
+      setMsg(t("Uploading {i}/{total}: {name}", { i: i + 1, total: files.length, name: f.name }));
       await api.upload(f, title).catch((e) => setMsg(e.message));
     }
-    setMsg("Caricamento completato");
+    setMsg(t("Upload complete"));
     reload();
   };
   const L = series.filter((s) => s.title.toLowerCase().includes(q.toLowerCase()));
   return (
     <main className="page">
       <div className="page-head">
-        <h1>Libreria</h1>
+        <h1>{t("Library")}</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <label className="btn sm ghost"><Icon name="upload" size={16} />Carica<input type="file" accept="video/*,.mkv" multiple hidden onChange={(e) => onFiles(e.target.files)} /></label>
-          <Button size="sm" variant="secondary" icon="folder" onClick={() => api.scanInbox().then(() => { setMsg("Importazione avviata"); setTimeout(reload, 2500); }).catch((e) => setMsg(e.message))}>Importa</Button>
+          <label className="btn sm ghost"><Icon name="upload" size={16} />{t("Upload")}<input type="file" accept="video/*,.mkv" multiple hidden onChange={(e) => onFiles(e.target.files)} /></label>
+          <Button size="sm" variant="secondary" icon="folder" onClick={() => api.scanInbox().then(() => { setMsg(t("Import started")); setTimeout(reload, 2500); }).catch((e) => setMsg(e.message))}>{t("Import")}</Button>
         </div>
       </div>
-      <label className="input pill" style={{ marginBottom: 20 }}><Icon name="search" size={20} /><input placeholder="Filtra la libreria" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+      <label className="input pill" style={{ marginBottom: 20 }}><Icon name="search" size={20} /><input placeholder={t("Filter the library")} value={q} onChange={(e) => setQ(e.target.value)} /></label>
       {msg && <p className="muted" style={{ marginBottom: 12 }}>{msg}</p>}
-      {L.length === 0 ? <Empty icon="folder">Scarica qualcosa sul NAS o metti i file in /media/_inbox e premi Importa</Empty> : (
-        <div className="grid">{L.map((s) => <PosterCard key={s.id} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} meta={`${s.episodeCount}${s.totalEpisodes ? `/${s.totalEpisodes}` : ""} ep`} />)}</div>
+      {L.length === 0 ? <Empty icon="folder">{t("Download something to your server or put files in /media/_inbox and press Import")}</Empty> : (
+        <div className="grid">{L.map((s) => <PosterCard key={s.id} to={`/series/${s.id}`} title={s.title} img={s.posterUrl} meta={t("{n} ep", { n: `${s.episodeCount}${s.totalEpisodes ? `/${s.totalEpisodes}` : ""}` })} />)}</div>
       )}
     </main>
   );
@@ -314,7 +316,7 @@ export function TitlePage() {
   const [playing, setPlaying] = useState<{ url: string; episode?: Episode; resumeAt?: number; subtitles?: Subtitle[]; fonts?: string[]; audioTracks?: AudioTrack[] }>();
   const [sources, setSources] = useState(false);
   const [statusSheet, setStatusSheet] = useState(false);
-  const [tab, setTab] = useState<"Episodi" | "Simili">("Episodi");
+  const [tab, setTab] = useState<string>(t("Episodes"));
   const [more, setMore] = useState(false);
   const [all, setAll] = useState(false);
   const [note, setNote] = useState<string>();
@@ -333,7 +335,7 @@ export function TitlePage() {
     if (params.seriesId) { s = await api.series(Number(params.seriesId)); alId = s.aniListId; }
     if (alId) {
       setMedia(await api.aniListMedia(alId).catch(() => null));
-      setEntry(await api.aniListEntry(alId));
+      setEntry(await api.trackerEntry(alId));
       s = s ?? (await api.seriesByAniList(alId));
     }
     setSeries(s);
@@ -389,74 +391,58 @@ export function TitlePage() {
       } else if (c?.kind === "series" && series) {
         await api.deleteSeries(series.id); setEpisodes([]); setSeries(null);
       }
-      setNote("Eliminato dal NAS");
+      setNote(t("Deleted from the server"));
     } catch (e) { setNote((e as Error).message); }
-  };
-
-  const [progressDraft, setProgressDraft] = useState<number>();
-  const setProgress = async (n: number) => {
-    if (!media) return;
-    setProgressDraft(n);
-    try { await api.setAniListProgress(media.id, n); setEntry(await api.aniListEntry(media.id)); setNote(undefined); }
-    catch (e) { setNote((e as Error).message); }
-    finally { setProgressDraft(undefined); }
-  };
-
-  const setStatus = async (status: string) => {
-    setStatusSheet(false);
-    if (!media) return;
-    try { await api.setAniListStatus(media.id, status); setEntry(await api.aniListEntry(media.id)); setNote(undefined); }
-    catch (e) { setNote((e as Error).message.includes("409") || /collegato/i.test((e as Error).message) ? "Collega AniList dal Profilo" : (e as Error).message); }
   };
 
   return (
     <aside className="detail">
       <div className="d-banner" style={banner ? { backgroundImage: `url(${banner})` } : undefined}>
-        <IconButton icon="left" label="Indietro" filled onClick={close} />
-        {nextEp && <button className="playbig" aria-label="Riproduci" onClick={() => play(nextEp)}><Icon name="play" size={28} /></button>}
+        <IconButton icon="left" label={t("Back")} filled onClick={close} />
+        {nextEp && <button className="playbig" aria-label={t("Play")} onClick={() => play(nextEp)}><Icon name="play" size={28} /></button>}
       </div>
       <div className="d-body">
         <h1>{title}</h1>
         {media?.titleRomaji && media.titleRomaji !== title && <div className="romaji">{media.titleRomaji}</div>}
         <div className="meta" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span>{meta(media?.year, media?.genres.slice(0, 3).join(" · "), (media?.episodes ?? series?.totalEpisodes) && `${media?.episodes ?? series?.totalEpisodes} episodi`, media?.averageScore && `★ ${media.averageScore}%`)}</span>
-          {sorted.length > 0 && <Badge>Sul NAS</Badge>}
+          <span>{meta(media?.year, media?.genres.slice(0, 3).join(" · "), (media?.episodes ?? series?.totalEpisodes) && t("{n} episodes", { n: (media?.episodes ?? series?.totalEpisodes)! }), media?.averageScore && `★ ${media.averageScore}%`)}</span>
+          {sorted.length > 0 && <Badge>{t("On server")}</Badge>}
         </div>
         {media?.nextAiringAt && media.nextAiringEpisode && (
           <div className="meta" style={{ marginTop: 6, color: "var(--teal-500)" }}>
-            Prossimo episodio (E{media.nextAiringEpisode}): {new Date(media.nextAiringAt * 1000).toLocaleString("it-IT", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            {t("Next episode (E{n}): {date}", { n: media.nextAiringEpisode ?? "", date: new Date(media.nextAiringAt * 1000).toLocaleString(dateLocale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) })}
           </div>
         )}
 
         {media && (entry
           ? <button className="al-row" onClick={() => setStatusSheet(true)}><Icon name="link" size={18} color="var(--teal-500)" />
-              <span>AniList: guardati {entry.progress}/{media.episodes ?? "?"} · {ALSTATUS[entry.status] ?? entry.status}</span><Icon name="right" size={18} color="var(--text-3)" /></button>
-          : <button className="al-row" onClick={() => setStatusSheet(true)}><Icon name="plus" size={18} color="var(--teal-500)" /><span>Aggiungi alla lista AniList</span><Icon name="right" size={18} color="var(--text-3)" /></button>)}
+              <span>{t("Watched {n}/{total}", { n: entry.progress, total: media.episodes ?? "?" })} · {ALSTATUS[entry.status] ?? entry.status}{entry.score ? ` · ★ ${entry.score}` : ""}</span><Icon name="right" size={18} color="var(--text-3)" /></button>
+          : <button className="al-row" onClick={() => setStatusSheet(true)}><Icon name="plus" size={18} color="var(--teal-500)" /><span>{t("Add to your list")}</span><Icon name="right" size={18} color="var(--text-3)" /></button>)}
         {note && <p className="error" style={{ marginBottom: 10, fontSize: 13 }}>{note}</p>}
 
         {nextEp ? (
           <div className="d-actions">
-            <Button icon="play" onClick={() => play(nextEp)}>{(nextEp.positionSeconds ?? 0) > 5 && !nextEp.completed ? `Riprendi E${epLabel(nextEp)}` : `Guarda E${epLabel(nextEp)}`}</Button>
-            <Button variant="secondary" icon="search" onClick={() => setSources(true)}>Trova episodi</Button>
+            <Button icon="play" onClick={() => play(nextEp)}>{(nextEp.positionSeconds ?? 0) > 5 && !nextEp.completed ? t("Resume E{n}", { n: epLabel(nextEp) }) : t("Watch E{n}", { n: epLabel(nextEp) })}</Button>
+            <Button variant="secondary" icon="search" onClick={() => setSources(true)}>{t("Find episodes")}</Button>
           </div>
         ) : loaded && (
           <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ fontSize: 14, color: "var(--text-2)", textAlign: "center" }}>Non ancora sul NAS</div>
-            <Button full icon="search" onClick={() => setSources(true)}>Trova episodi</Button>
+            <div style={{ fontSize: 14, color: "var(--text-2)", textAlign: "center" }}>{t("Not on the server yet")}</div>
+            <Button full icon="search" onClick={() => setSources(true)}>{t("Find episodes")}</Button>
           </div>
         )}
 
         {desc && <p className={`desc${more ? " open" : ""}`} onClick={() => setMore(!more)}>{desc}</p>}
-        <Segmented options={["Episodi", "Simili"] as const} value={tab} onChange={setTab} />
-        {tab === "Episodi" ? (
+        <Segmented options={[t("Episodes"), t("Similar")] as const} value={tab} onChange={setTab} />
+        {tab === t("Episodes") ? (
           <div style={{ marginTop: 8 }}>
-            {sorted.length === 0 ? <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>Nessun episodio sul NAS</div> : (
+            {sorted.length === 0 ? <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>{t("No episodes on the server")}</div> : (
               <>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "flex-end", padding: "4px 0" }}>
-                  {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote("Riparazione inviata al NAS")).catch((e) => setNote(e.message))}>Ripara serie</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditSeries(true)}>Modifica info</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="move" onClick={() => setMoving({ eps: sorted })}>Sposta serie</Button>}
-                  {series && <Button size="sm" variant="ghost" icon="trash" onClick={() => setConfirm({ kind: "series" })}>Elimina serie</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="wrench" onClick={() => api.repairSeries(series.id).then(() => setNote(t("Repair sent to the server"))).catch((e) => setNote(e.message))}>{t("Repair series")}</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditSeries(true)}>{t("Edit info")}</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="move" onClick={() => setMoving({ eps: sorted })}>{t("Move series")}</Button>}
+                  {series && <Button size="sm" variant="ghost" icon="trash" onClick={() => setConfirm({ kind: "series" })}>{t("Delete series")}</Button>}
                 </div>
                 {shown.map((e) => {
                   const seen = e.completed || (!e.isExtra && entry != null && entry.progress >= e.number);
@@ -465,52 +451,52 @@ export function TitlePage() {
                     <div key={e.id} className={`ep${playing?.episode?.id === e.id ? " active" : ""}`}>
                       <div className={`n${seen ? " seen" : ""}`} onClick={() => play(e)}>{seen ? <Icon name="check" size={18} /> : epLabel(e)}</div>
                       <div className="x" onClick={() => play(e)}>
-                        <b>{e.title || `Episodio ${epLabel(e)}`}</b>
-                        <small>{meta(e.durationSeconds && `${Math.round(e.durationSeconds / 60)} min`, `${(e.sizeBytes / 1048576).toFixed(0)} MB`, e.source)}</small>
+                        <b>{e.title || t("Episode {n}", { n: epLabel(e) })}</b>
+                        <small>{meta(e.durationSeconds && t("{n} min", { n: Math.round(e.durationSeconds / 60) }), `${(e.sizeBytes / 1048576).toFixed(0)} MB`, e.source)}</small>
                         {p != null && !e.completed && <Progress value={p} />}
                       </div>
-                      <IconButton icon="wrench" label="Ripara sul NAS" title="Ripara sul NAS: riallinea audio/video e sottotitoli"
-                        onClick={() => api.repairEpisode(e.id).then(() => setNote("Riparazione inviata al NAS")).catch((x) => setNote(x.message))} />
-                      <IconButton icon="edit" label="Modifica numero" title="Modifica numero / contenuto extra" onClick={() => setEditing(e)} />
-                      <IconButton icon="move" label="Sposta in un'altra serie" title="Sposta in un'altra serie" onClick={() => setMoving({ eps: [e] })} />
-                      <IconButton icon="trash" label="Elimina dal NAS" title="Elimina dal NAS" onClick={() => setConfirm({ kind: "episode", ep: e })} />
+                      <IconButton icon="wrench" label={t("Repair on server")} title={t("Repair on server: realign audio/video and subtitles")}
+                        onClick={() => api.repairEpisode(e.id).then(() => setNote(t("Repair sent to the server"))).catch((x) => setNote(x.message))} />
+                      <IconButton icon="edit" label={t("Edit number")} title={t("Edit number / extra content")} onClick={() => setEditing(e)} />
+                      <IconButton icon="move" label={t("Move to another series")} title={t("Move to another series")} onClick={() => setMoving({ eps: [e] })} />
+                      <IconButton icon="trash" label={t("Delete from server")} title={t("Delete from server")} onClick={() => setConfirm({ kind: "episode", ep: e })} />
                     </div>
                   );
                 })}
-                {!all && sorted.length > 6 && <Button variant="ghost" full style={{ marginTop: 12 }} onClick={() => setAll(true)}>Altri episodi ({sorted.length - 6})</Button>}
+                {!all && sorted.length > 6 && <Button variant="ghost" full style={{ marginTop: 12 }} onClick={() => setAll(true)}>{t("More episodes ({n})", { n: sorted.length - 6 })}</Button>}
               </>
             )}
           </div>
         ) : similar === null ? (
-          <div className="muted" style={{ textAlign: "center", padding: "32px 0" }}>Caricamento…</div>
+          <div className="muted" style={{ textAlign: "center", padding: "32px 0" }}>{t("Loading…")}</div>
         ) : (related.length || similar.length) ? (
           <>
             {related.length > 0 && (
               <>
-                <h3 className="similar-h">Stagioni e correlati</h3>
+                <h3 className="similar-h">{t("Seasons and related")}</h3>
                 <div className="similar-grid">{related.map((r) => <PosterCard key={`${r.relation}-${r.media.id}`} to={`/anime/${r.media.id}`} title={r.media.title} img={r.media.coverUrl} meta={r.relation} />)}</div>
               </>
             )}
             {similar.length > 0 && (
               <>
-                <h3 className="similar-h">Simili</h3>
+                <h3 className="similar-h">{t("Similar")}</h3>
                 <div className="similar-grid">{similar.map((m) => <PosterCard key={m.id} to={`/anime/${m.id}`} title={m.title} img={m.coverUrl} meta={m.year?.toString()} />)}</div>
               </>
             )}
           </>
-        ) : <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>Nessun titolo simile</div>}
+        ) : <div className="muted" style={{ textAlign: "center", padding: "32px 0", fontSize: 14 }}>{t("No similar titles")}</div>}
       </div>
 
       {confirm && (
-        <Drawer title={confirm.kind === "episode" ? "Eliminare l'episodio dal NAS?" : "Eliminare tutta la serie dal NAS?"} onClose={() => setConfirm(undefined)}>
+        <Drawer title={confirm.kind === "episode" ? t("Delete the episode from the server?") : t("Delete the whole series from the server?")} onClose={() => setConfirm(undefined)}>
           <p className="muted" style={{ marginBottom: 18 }}>
             {confirm.kind === "episode"
-              ? `Il file e i sottotitoli dell'episodio ${confirm.ep.number} vengono cancellati dal NAS e liberano spazio. Per rivederlo dovrai scaricarlo di nuovo.`
-              : `Tutti gli episodi di “${title}” vengono cancellati dal NAS. Questa azione non si può annullare.`}
+              ? t("The file and subtitles of episode {n} are deleted from the server and free up space. To watch it again you will have to download it again.", { n: confirm.ep.number })
+              : t("All episodes of “{title}” are deleted from the server. This cannot be undone.", { title })}
           </p>
           <div style={{ display: "grid", gap: 10 }}>
-            <Button full style={{ background: "var(--danger)" }} icon="trash" onClick={doDelete}>{confirm.kind === "episode" ? "Elimina episodio" : "Elimina tutto"}</Button>
-            <Button full variant="ghost" onClick={() => setConfirm(undefined)}>Annulla</Button>
+            <Button full style={{ background: "var(--danger)" }} icon="trash" onClick={doDelete}>{confirm.kind === "episode" ? t("Delete episode") : t("Delete all")}</Button>
+            <Button full variant="ghost" onClick={() => setConfirm(undefined)}>{t("Cancel")}</Button>
           </div>
         </Drawer>
       )}
@@ -519,21 +505,8 @@ export function TitlePage() {
       {editing && <EditEpisodeDrawer ep={editing} onClose={() => setEditing(undefined)} onDone={() => { setEditing(undefined); load(); }} />}
       {moving && <MoveDrawer eps={moving.eps} fromTitle={title} onClose={() => setMoving(undefined)}
         onDone={(seriesId) => { setMoving(undefined); if (seriesId !== series?.id) nav(`/series/${seriesId}`); else load(); }} />}
-      {statusSheet && (
-        <Drawer title="Stato su AniList" onClose={() => setStatusSheet(false)}>
-          {media && (
-            <div className="row-s" style={{ marginBottom: 8 }}>
-              <span className="l">Episodi guardati<small>Su AniList: {entry?.progress ?? 0}{media.episodes ? ` / ${media.episodes}` : ""}</small></span>
-              <IconButton icon="minus" label="Uno in meno" onClick={() => setProgress(Math.max(0, (progressDraft ?? entry?.progress ?? 0) - 1))} />
-              <b style={{ minWidth: 32, textAlign: "center" }}>{progressDraft ?? entry?.progress ?? 0}</b>
-              <IconButton icon="plus" label="Uno in più" onClick={() => setProgress(Math.min(media.episodes ?? 9999, (progressDraft ?? entry?.progress ?? 0) + 1))} />
-            </div>
-          )}
-          {Object.entries(ALSTATUS).map(([k, label]) => (
-            <button key={k} className="opt" onClick={() => setStatus(k)}>{label}{entry?.status === k && <Icon name="check" size={20} color="var(--accent)" />}</button>
-          ))}
-        </Drawer>
-      )}
+      {statusSheet && media && <ListStatusDrawer media={media} entry={entry} onClose={() => setStatusSheet(false)}
+        onSaved={(e) => { setEntry(e); setNote(undefined); }} onError={(m) => setNote(m)} />}
       {playing && (
         <Player key={playing.url} {...playing} title={title} episodes={sorted} next={playing.episode ? sorted.find((e) => e.number > playing.episode!.number) : undefined}
           onClose={() => { setPlaying(undefined); load(); }} onNext={play} />
@@ -564,20 +537,20 @@ function EditSeriesDrawer({ series, onClose, onDone }: { series: Series; onClose
     } catch (e) { setError((e as Error).message); setBusy(false); }
   };
   return (
-    <Drawer title="Modifica info" onClose={onClose}>
-      <Field label="Titolo" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <Field label="ID AniList (vuoto = nessun collegamento)" value={alId} onChange={(e) => setAlId(e.target.value)} />
-      <Field label="Indirizzo del poster" value={poster} onChange={(e) => setPoster(e.target.value)} />
-      <Field label="Indirizzo del banner" value={banner} onChange={(e) => setBanner(e.target.value)} />
-      <label className="field"><span>Descrizione</span>
+    <Drawer title={t("Edit info")} onClose={onClose}>
+      <Field label={t("Title")} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Field label={t("AniList ID (empty = no link)")} value={alId} onChange={(e) => setAlId(e.target.value)} />
+      <Field label={t("Poster URL")} value={poster} onChange={(e) => setPoster(e.target.value)} />
+      <Field label={t("Banner URL")} value={banner} onChange={(e) => setBanner(e.target.value)} />
+      <label className="field"><span>{t("Description")}</span>
         <div className="input area"><textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} style={{ width: "100%", background: "transparent", border: 0, color: "inherit", font: "inherit", resize: "vertical", outline: "none" }} /></div>
       </label>
       {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        <Button full disabled={busy || !idOk || !title.trim()} onClick={() => save(false)}>{busy ? "Salvataggio…" : "Salva"}</Button>
-        <Button full variant="secondary" icon="ccw" disabled={busy || !idOk || id === 0} onClick={() => save(true)}>Salva e aggiorna da AniList</Button>
+        <Button full disabled={busy || !idOk || !title.trim()} onClick={() => save(false)}>{busy ? t("Saving…") : t("Save")}</Button>
+        <Button full variant="secondary" icon="ccw" disabled={busy || !idOk || id === 0} onClick={() => save(true)}>{t("Save and refresh from AniList")}</Button>
       </div>
-      <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>«Aggiorna da AniList» sostituisce titolo, descrizione, immagini, episodi, generi e anno con quelli di AniList.</p>
+      <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>{t("“Refresh from AniList” replaces title, description, images, episode count, genres and year with AniList's.")}</p>
     </Drawer>
   );
 }
@@ -596,12 +569,12 @@ function EditEpisodeDrawer({ ep, onClose, onDone }: { ep: Episode; onClose: () =
     catch (e) { setError((e as Error).message); setBusy(false); }
   };
   return (
-    <Drawer title="Modifica numero" onClose={onClose}>
-      <Field label="Numero" value={num} onChange={(e) => setNum(e.target.value)} />
-      <SettingsRow icon="plus" label="Contenuto extra" value={`Compare come EX${num} e non conta per AniList`} toggle={extra} onToggle={setExtra} />
+    <Drawer title={t("Edit number")} onClose={onClose}>
+      <Field label={t("Number")} value={num} onChange={(e) => setNum(e.target.value)} />
+      <SettingsRow icon="plus" label={t("Extra content")} value={t("Shown as EX{n} and not counted on your list", { n: num })} toggle={extra} onToggle={setExtra} />
       {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        <Button full disabled={busy || !ok} onClick={save}>{busy ? "Salvataggio…" : "Salva"}</Button>
+        <Button full disabled={busy || !ok} onClick={save}>{busy ? t("Saving…") : t("Save")}</Button>
       </div>
     </Drawer>
   );
@@ -617,7 +590,7 @@ function MoveDrawer({ eps, fromTitle, onClose, onDone }: { eps: Episode[]; fromT
   const [error, setError] = useState<string>();
   useEffect(() => { const t = setTimeout(() => { if (q.trim().length > 1) api.aniListSearch(q).then(setResults).catch(() => setResults([])); }, 300); return () => clearTimeout(t); }, [q]);
   const off = Number(offset.replace(",", ".")) || 0;
-  const label = eps.length === 1 ? `l'episodio ${eps[0].number}` : `${eps.length} episodi`;
+  const label = eps.length === 1 ? t("episode {n}", { n: eps[0].number }) : t("{n} episodes", { n: eps.length });
   const go = async () => {
     if (!picked) return;
     setBusy(true); setError(undefined);
@@ -625,26 +598,26 @@ function MoveDrawer({ eps, fromTitle, onClose, onDone }: { eps: Episode[]; fromT
     catch (e) { setError((e as Error).message); setBusy(false); }
   };
   return (
-    <Drawer title="Sposta in un'altra serie" onClose={onClose}>
-      <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>Sposti {label} di «{fromTitle}». Il file, i sottotitoli e i progressi vanno con loro.</p>
+    <Drawer title={t("Move to another series")} onClose={onClose}>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{t("You are moving {what} of “{title}”. The file, subtitles and progress go with them.", { what: label, title: fromTitle })}</p>
       {!picked ? (
         <>
-          <label className="input pill"><Icon name="search" size={20} /><input value={q} placeholder="Cerca la serie giusta su AniList" onChange={(e) => setQ(e.target.value)} /></label>
+          <label className="input pill"><Icon name="search" size={20} /><input value={q} placeholder={t("Find the right series on AniList")} onChange={(e) => setQ(e.target.value)} /></label>
           {results.map((m) => (
-            <button key={m.id} className="pick" onClick={() => setPicked(m)}><b>{m.title}</b><small>{meta(m.year, m.format, m.episodes && `${m.episodes} ep`)}</small><Icon name="right" size={18} color="var(--text-3)" /></button>
+            <button key={m.id} className="pick" onClick={() => setPicked(m)}><b>{m.title}</b><small>{meta(m.year, m.format, m.episodes && t("{n} ep", { n: m.episodes }))}</small><Icon name="right" size={18} color="var(--text-3)" /></button>
           ))}
         </>
       ) : (
         <>
-          <div className="pick" style={{ cursor: "default" }}><b>{picked.title}</b><small>{meta(picked.year, picked.format, picked.episodes && `${picked.episodes} ep`)}</small></div>
-          <Field label="Cambia il numero degli episodi di" placeholder="0" value={offset} onChange={(e) => setOffset(e.target.value)} />
+          <div className="pick" style={{ cursor: "default" }}><b>{picked.title}</b><small>{meta(picked.year, picked.format, picked.episodes && t("{n} ep", { n: picked.episodes }))}</small></div>
+          <Field label={t("Shift the episode numbers by")} placeholder="0" value={offset} onChange={(e) => setOffset(e.target.value)} />
           <p className="muted" style={{ fontSize: 12, margin: "6px 0 12px" }}>
-            Esempio: se l'episodio 13 qui è il primo della nuova serie, metti -12. {eps.length === 1 && `L'episodio ${eps[0].number} diventerà il ${eps[0].number + off}.`}
+            {t("Example: if episode 13 here is the first of the new series, enter -12.")} {eps.length === 1 && t("Episode {from} will become {to}.", { from: eps[0].number, to: eps[0].number + off })}
           </p>
           {error && <p className="error" style={{ fontSize: 13 }}>{error}</p>}
           <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-            <Button full disabled={busy} icon="move" onClick={go}>{busy ? "Spostamento…" : `Sposta in «${picked.title}»`}</Button>
-            <Button full variant="ghost" onClick={() => setPicked(undefined)}>← Scegli un'altra serie</Button>
+            <Button full disabled={busy} icon="move" onClick={go}>{busy ? t("Moving…") : t("Move to “{title}”", { title: picked.title })}</Button>
+            <Button full variant="ghost" onClick={() => setPicked(undefined)}>{t("← Choose another series")}</Button>
           </div>
         </>
       )}
@@ -662,7 +635,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
   const chosen = pickSubtitle(subtitles);
   const ref = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
-  const [t, setT] = useState(0);
+  const [now, setNow] = useState(0);
   const [dur, setDur] = useState(0);
   const [show, setShow] = useState(true);
   const [cc, setCc] = useState(false);
@@ -784,7 +757,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
 
   const v = () => ref.current!;
   const seek = (e: React.MouseEvent<HTMLDivElement>) => { const r = e.currentTarget.getBoundingClientRect(); v().currentTime = ((e.clientX - r.left) / r.width) * (dur || 0); };
-  const credits = dur > 0 && dur - t <= 90 && next;
+  const credits = dur > 0 && dur - now <= 90 && next;
 
   return createPortal(
     <div className="player" ref={box} onMouseMove={wake} onClick={wake}>
@@ -795,56 +768,56 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
           setDur(v.duration);
           if (resumeAt && resumeAt > 5) v.currentTime = resumeAt;
         }}
-        onTimeUpdate={(e) => setT(e.currentTarget.currentTime)} onPlay={() => setPaused(false)} onPause={() => { setPaused(true); setShow(true); }}
+        onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)} onPlay={() => setPaused(false)} onPause={() => { setPaused(true); setShow(true); }}
         onEnded={() => (next ? onNext(next) : onClose())}>
         {subtitles.map((s) => <track key={s.index} kind="subtitles" src={s.url} label={s.label} srcLang={s.language ?? undefined} />)}
       </video>
       <audio ref={audioEl} src={dub?.url} preload="auto" style={{ display: "none" }} />
       <div className={`ui${show ? "" : " hide"}`} onClick={(e) => e.stopPropagation()}>
         <div className="top">
-          <IconButton icon="chevdown" label="Chiudi" onClick={onClose} />
-          <div className="tt"><h3>{title}</h3>{episode && <small>Episodio {epLabel(episode)}{episode.title ? ` · ${episode.title}` : ""}</small>}</div>
-          {pip && <IconButton icon="pip" label="Picture in Picture" onClick={() => (document.pictureInPictureElement ? document.exitPictureInPicture() : v().requestPictureInPicture()).catch(() => {})} />}
+          <IconButton icon="chevdown" label={t("Close")} onClick={onClose} />
+          <div className="tt"><h3>{title}</h3>{episode && <small>{t("Episode {n}", { n: epLabel(episode) })}{episode.title ? ` · ${episode.title}` : ""}</small>}</div>
+          {pip && <IconButton icon="pip" label={t("Picture in Picture")} onClick={() => (document.pictureInPictureElement ? document.exitPictureInPicture() : v().requestPictureInPicture()).catch(() => {})} />}
         </div>
         <div className="mid">
-          <button className="round glass" aria-label="Indietro 10 secondi" onClick={() => (v().currentTime -= 10)}><Icon name="ccw" size={24} /></button>
-          <button className="round big" aria-label={paused ? "Riproduci" : "Pausa"} onClick={() => (v().paused ? v().play() : v().pause())}><Icon name={paused ? "play" : "pause"} size={34} color="var(--ink-950)" /></button>
-          <button className="round glass" aria-label="Avanti 10 secondi" onClick={() => (v().currentTime += 10)}><Icon name="cw" size={24} /></button>
+          <button className="round glass" aria-label={t("Back 10 seconds")} onClick={() => (v().currentTime -= 10)}><Icon name="ccw" size={24} /></button>
+          <button className="round big" aria-label={paused ? t("Play") : t("Pause")} onClick={() => (v().paused ? v().play() : v().pause())}><Icon name={paused ? "play" : "pause"} size={34} color="var(--ink-950)" /></button>
+          <button className="round glass" aria-label={t("Forward 10 seconds")} onClick={() => (v().currentTime += 10)}><Icon name="cw" size={24} /></button>
         </div>
         <div>
           <div className="bot">
-            {t < 150 ? <button className="btn sm glass" style={{ color: "#fff" }} onClick={() => (v().currentTime = t + 85)}><Icon name="ff" size={18} />Salta sigla</button> : <span />}
+            {now < 150 ? <button className="btn sm glass" style={{ color: "#fff" }} onClick={() => (v().currentTime = now + 85)}><Icon name="ff" size={18} />{t("Skip intro")}</button> : <span />}
             {credits && next && (
-              <div className="next glass"><div><small>Prossimo episodio</small><b>E{epLabel(next)}{next.title ? ` · ${next.title}` : ""}</b></div><Button size="sm" onClick={() => onNext(next)}>Avvia</Button></div>
+              <div className="next glass"><div><small>{t("Next episode")}</small><b>E{epLabel(next)}{next.title ? ` · ${next.title}` : ""}</b></div><Button size="sm" onClick={() => onNext(next)}>{t("Start")}</Button></div>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
-            {episodes.length > 1 && <Button size="sm" variant="ghost" icon="list" onClick={() => setList(true)}>Episodi</Button>}
+            {episodes.length > 1 && <Button size="sm" variant="ghost" icon="list" onClick={() => setList(true)}>{t("Episodes")}</Button>}
             <span style={{ flex: 1 }} />
-            {audioTracks.length > 1 && <IconButton icon="audio" label="Lingua audio" onClick={() => { setAu(!au); setCc(false); }} />}
-            {subtitles.length > 0 && <IconButton icon="captions" label="Sottotitoli" onClick={() => { setCc(!cc); setAu(false); }} />}
-            {next && <IconButton icon="skip" label="Episodio successivo" onClick={() => onNext(next)} />}
-            {canFull && <IconButton icon={full ? "shrink" : "expand"} label={full ? "Esci da schermo intero" : "Schermo intero"} onClick={toggleFull} />}
+            {audioTracks.length > 1 && <IconButton icon="audio" label={t("Audio language")} onClick={() => { setAu(!au); setCc(false); }} />}
+            {subtitles.length > 0 && <IconButton icon="captions" label={t("Subtitles")} onClick={() => { setCc(!cc); setAu(false); }} />}
+            {next && <IconButton icon="skip" label={t("Next episode")} onClick={() => onNext(next)} />}
+            {canFull && <IconButton icon={full ? "shrink" : "expand"} label={full ? t("Exit full screen") : t("Full screen")} onClick={toggleFull} />}
           </div>
           <div className="seek" onClick={seek}>
-            <div className="track" /><div className="fill" style={{ width: `${dur ? (t / dur) * 100 : 0}%` }} /><div className="knob" style={{ left: `${dur ? (t / dur) * 100 : 0}%` }} />
+            <div className="track" /><div className="fill" style={{ width: `${dur ? (now / dur) * 100 : 0}%` }} /><div className="knob" style={{ left: `${dur ? (now / dur) * 100 : 0}%` }} />
           </div>
-          <div className="times"><span>{fmtTime(t)}</span><span style={{ color: "var(--text-2)" }}>-{fmtTime(dur - t)}</span></div>
+          <div className="times"><span>{fmtTime(now)}</span><span style={{ color: "var(--text-2)" }}>-{fmtTime(dur - now)}</span></div>
         </div>
         {list && (
-          <Drawer title="Episodi" onClose={() => setList(false)}>
+          <Drawer title={t("Episodes")} onClose={() => setList(false)}>
             {episodes.map((e) => {
               const cur = e.id === episode?.id;
               return (
                 <div key={e.id} className={`ep${cur ? " active" : ""}`} onClick={() => { setList(false); if (!cur) onNext(e); }} style={{ cursor: "pointer" }}>
                   <div className={`n${e.completed && !cur ? " seen" : ""}`}>{e.completed && !cur ? <Icon name="check" size={18} /> : epLabel(e)}</div>
-                  <div className="x"><b>{e.title || `Episodio ${epLabel(e)}`}</b>{e.durationSeconds ? <small>{Math.round(e.durationSeconds / 60)} min</small> : null}</div>
+                  <div className="x"><b>{e.title || t("Episode {n}", { n: epLabel(e) })}</b>{e.durationSeconds ? <small>{t("{n} min", { n: Math.round(e.durationSeconds / 60) })}</small> : null}</div>
                 </div>
               );
             })}
           </Drawer>
         )}
-        {audioBusy && <div className="ccmenu glass" style={{ padding: "12px 16px" }}>Preparo il doppiaggio…</div>}
+        {audioBusy && <div className="ccmenu glass" style={{ padding: "12px 16px" }}>{t("Preparing the dub…")}</div>}
         {au && (
           <div className="ccmenu glass">
             {audioTracks.map((a) => <button key={a.index} onClick={() => { pickAudio(a); setAu(false); }}>{a.label}{audio === a.index && <Icon name="check" size={18} color="var(--accent)" />}</button>)}
@@ -852,7 +825,7 @@ function Player({ url, episode, resumeAt, subtitles = [], fonts = [], audioTrack
         )}
         {cc && (
           <div className="ccmenu glass">
-            <button onClick={() => { setTrack(-1); setCc(false); }}>Disattivati{track === -1 && <Icon name="check" size={18} color="var(--accent)" />}</button>
+            <button onClick={() => { setTrack(-1); setCc(false); }}>{t("Off")}{track === -1 && <Icon name="check" size={18} color="var(--accent)" />}</button>
             {subtitles.map((s) => <button key={s.index} onClick={() => { setTrack(s.index); setCc(false); }}>{s.label}{track === s.index && <Icon name="check" size={18} color="var(--accent)" />}</button>)}
           </div>
         )}
@@ -897,17 +870,17 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
   };
   const send = async (items: { sourceRef: string; episodeNumber?: number }[]) => {
     const alId = aniListId ?? Number(episodes[0]?.extra?.anilistId ?? NaN);
-    try { await api.sendToNas(provider!.id, title, Number.isNaN(alId) ? undefined : alId, items); setSent(items.length); }
+    try { await api.sendToServer(provider!.id, title, Number.isNaN(alId) ? undefined : alId, items); setSent(items.length); }
     catch (e) { setError((e as Error).message); }
   };
   const manual = provider && !provider.canSearch;
   const [subNote, setSubNote] = useState<string>();
   const refreshSubs = async () => {
     if (!provider || !picked || seriesId == null) return;
-    setSubNote("Invio…");
+    setSubNote(t("Sending…"));
     try {
       const r = await api.refreshSubtitles(seriesId, provider.id, picked.ref);
-      setSubNote(`${r.queued} episodi in coda per i sottotitoli${r.notFound.length ? ` · non trovati su ${provider.name}: ${r.notFound.join(", ")}` : ""}. Segui l'avanzamento in Download.`);
+      setSubNote(t("{n} episodes queued for subtitles{missing}. Follow progress in Downloads.", { n: r.queued, missing: r.notFound.length ? ` · ${t("not found on {source}: {list}", { source: provider.name, list: r.notFound.join(", ") })}` : "" }));
     } catch (e) { setSubNote((e as Error).message); }
   };
 
@@ -915,36 +888,36 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
     <Drawer onClose={onClose}>
       <div className="sent">
         <Icon name="ok" size={48} color="var(--accent)" />
-        <h3>Inviati {sent} download al NAS</h3>
-        <p className="muted">Li trovi nella coda in Download.</p>
-        <Button full onClick={() => { onClose(); nav("/downloads"); }}>Vai a Download</Button>
-        <Button full variant="ghost" onClick={onClose}>Chiudi</Button>
+        <h3>{t("{n} downloads sent to the server", { n: sent })}</h3>
+        <p className="muted">{t("You'll find them in the Downloads queue.")}</p>
+        <Button full onClick={() => { onClose(); nav("/downloads"); }}>{t("Go to Downloads")}</Button>
+        <Button full variant="ghost" onClick={onClose}>{t("Close")}</Button>
       </div>
     </Drawer>
   );
 
   return (
-    <Drawer title="Trova episodi" onClose={onClose}>
+    <Drawer title={t("Find episodes")} onClose={onClose}>
       <div className="muted" style={{ fontSize: 13, marginTop: -8 }}>{title}</div>
-      <Step n={1}>Fonte</Step>
+      <Step n={1}>{t("Source")}</Step>
       <div className="chips" style={{ flexWrap: "wrap" }}>{providers.map((p) => <Chip key={p.id} on={p.id === provider?.id} onClick={() => setProvider(p)}>{p.name}</Chip>)}</div>
       {provider?.hint && <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{provider.hint}</p>}
       {manual ? (
         <>
-          <Step n={2}>Link o riferimento</Step>
+          <Step n={2}>{t("Link or reference")}</Step>
           <div style={{ display: "grid", gap: 10 }}>
-            <Field icon="link" placeholder="https://… o magnet" value={manualRef} onChange={(e) => setManualRef(e.target.value)} />
-            <Field label="Numero episodio (facoltativo)" placeholder="es. 5" value={manualEp} onChange={(e) => setManualEp(e.target.value)} />
+            <Field icon="link" placeholder={t("https://… or magnet")} value={manualRef} onChange={(e) => setManualRef(e.target.value)} />
+            <Field label={t("Episode number (optional)")} placeholder={t("e.g. 5")} value={manualEp} onChange={(e) => setManualEp(e.target.value)} />
           </div>
         </>
       ) : (
         <>
-          <Step n={2}>Cerca</Step>
-          <label className="input pill"><Icon name="search" size={20} /><input value={query} placeholder="Titolo da cercare" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} /></label>
+          <Step n={2}>{t("Search")}</Step>
+          <label className="input pill"><Icon name="search" size={20} /><input value={query} placeholder={t("Title to search")} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} /></label>
           {!picked ? (
             <>
-              <Step n={3}>Risultati</Step>
-              {results.length === 0 && <p className="muted" style={{ fontSize: 14 }}>Nessun risultato.</p>}
+              <Step n={3}>{t("Results")}</Step>
+              {results.length === 0 && <p className="muted" style={{ fontSize: 14 }}>{t("No results.")}</p>}
               {results.map((r) => (
                 <button key={r.ref} className="pick" onClick={() => open(r)}><b>{r.title}</b><small>{r.subtitle}</small><Icon name="right" size={18} color="var(--text-3)" /></button>
               ))}
@@ -954,8 +927,8 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <Step n={3}>{picked.title}</Step>
                 <div style={{ display: "flex", gap: 14, fontWeight: 600, color: "var(--accent)" }}>
-                  <span style={{ cursor: "pointer" }} onClick={() => setSelected(new Set(episodes.map((e) => e.ref)))}>Tutti</span>
-                  <span style={{ cursor: "pointer" }} onClick={() => setSelected(new Set())}>Nessuno</span>
+                  <span style={{ cursor: "pointer" }} onClick={() => setSelected(new Set(episodes.map((e) => e.ref)))}>{t("All")}</span>
+                  <span style={{ cursor: "pointer" }} onClick={() => setSelected(new Set())}>{t("None")}</span>
                 </div>
               </div>
               {episodes.map((e) => {
@@ -965,11 +938,11 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
                     <button className="pick" onClick={() => { const s = new Set(selected); on ? s.delete(e.ref) : s.add(e.ref); setSelected(s); }}>
                       <span className={`cb${on ? " on" : ""}`}>{on && <Icon name="check" size={16} />}</span><b>{e.title}</b>
                     </button>
-                    {provider?.canStream && <IconButton icon="play" label="Guarda ora" onClick={async () => onStream((await api.sourceStream(provider.id, e.ref)).url)} />}
+                    {provider?.canStream && <IconButton icon="play" label={t("Watch now")} onClick={async () => onStream((await api.sourceStream(provider.id, e.ref)).url)} />}
                   </div>
                 );
               })}
-              <Button variant="ghost" size="sm" style={{ marginTop: 10 }} onClick={() => setPicked(undefined)}>← Risultati</Button>
+              <Button variant="ghost" size="sm" style={{ marginTop: 10 }} onClick={() => setPicked(undefined)}>{t("← Results")}</Button>
             </>
           )}
         </>
@@ -978,16 +951,16 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
       <div style={{ display: "grid", gap: 10, marginTop: 20 }}>
         {!manual && picked && provider?.canSubtitles && seriesId != null && (
           <>
-            <Button full variant="secondary" icon="captions" onClick={refreshSubs}>Aggiorna solo i sottotitoli (ASS)</Button>
+            <Button full variant="secondary" icon="captions" onClick={refreshSubs}>{t("Update subtitles only (ASS)")}</Button>
             {subNote && <p className="muted" style={{ fontSize: 13 }}>{subNote}</p>}
           </>
         )}
         {manual ? (
           <Button full icon="down" disabled={!manualRef.trim() || (!!provider?.refPattern && !new RegExp(provider.refPattern).test(manualRef.trim()))}
-            onClick={() => send([{ sourceRef: manualRef.trim(), episodeNumber: manualEp ? Number(manualEp.replace(",", ".")) : undefined }])}>Scarica sul NAS ({manualRef.trim() ? 1 : 0})</Button>
+            onClick={() => send([{ sourceRef: manualRef.trim(), episodeNumber: manualEp ? Number(manualEp.replace(",", ".")) : undefined }])}>{t("Download to server ({n})", { n: manualRef.trim() ? 1 : 0 })}</Button>
         ) : (
           <Button full icon="down" disabled={!selected.size || !picked}
-            onClick={() => send(episodes.filter((e) => selected.has(e.ref)).map((e) => ({ sourceRef: e.ref, episodeNumber: e.number })))}>Scarica sul NAS ({picked ? selected.size : 0})</Button>
+            onClick={() => send(episodes.filter((e) => selected.has(e.ref)).map((e) => ({ sourceRef: e.ref, episodeNumber: e.number })))}>{t("Download to server ({n})", { n: picked ? selected.size : 0 })}</Button>
         )}
       </div>
     </Drawer>
@@ -996,13 +969,13 @@ function SourcesDrawer({ title, aniListId, seriesId, onClose, onStream }:
 
 // ---------- Download ----------
 const JOB_STATUS: Record<string, [string, string]> = {
-  Queued: ["In coda", "var(--text-3)"], Running: ["In corso", "var(--accent)"], PostProcessing: ["Post-elaborazione", "var(--info)"],
-  Completed: ["Completato", "var(--success)"], Failed: ["Fallito", "var(--danger)"], Cancelled: ["Annullato", "var(--text-3)"], Paused: ["In pausa", "var(--warning)"],
+  Queued: [t("Queued"), "var(--text-3)"], Running: [t("Running"), "var(--accent)"], PostProcessing: [t("Processing"), "var(--info)"],
+  Completed: [t("Completed"), "var(--success)"], Failed: [t("Failed"), "var(--danger)"], Cancelled: [t("Cancelled"), "var(--text-3)"], Paused: [t("Paused"), "var(--warning)"],
 };
 
 export function DownloadsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [seg, setSeg] = useState<"Sul NAS" | "Su questo dispositivo">("Sul NAS");
+  const [seg, setSeg] = useState<string>(t("On server"));
   const load = () => api.jobs().then(setJobs).catch(() => {});
   useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t); }, []);
   const act = (p: Promise<unknown>) => p.then(load).catch((e) => alert(e.message));
@@ -1011,19 +984,19 @@ export function DownloadsPage() {
   const anyPaused = jobs.some((j) => j.status === "Paused");
   return (
     <main className="page narrow">
-      <h1 style={{ marginBottom: 16 }}>Download</h1>
-      <Segmented options={["Sul NAS", "Su questo dispositivo"] as const} value={seg} onChange={setSeg} />
-      {seg === "Su questo dispositivo" ? (
-        <Empty icon="down">I download offline sono disponibili nelle app iOS, tvOS e Android. Dal browser guardi sempre in streaming dal NAS.</Empty>
+      <h1 style={{ marginBottom: 16 }}>{t("Downloads")}</h1>
+      <Segmented options={[t("On server"), t("On this device")] as const} value={seg} onChange={setSeg} />
+      {seg === t("On this device") ? (
+        <Empty icon="down">{t("Offline downloads are available in the iOS, tvOS and Android apps. In the browser you always stream from the server.")}</Empty>
       ) : (
         <div className="list" style={{ marginTop: 16 }}>
           {jobs.length > 0 && (
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Button size="sm" variant="ghost" icon={anyPaused ? "play" : "pause"} onClick={() => act(anyPaused ? api.resumeAll() : api.pauseAll())}>{anyPaused ? "Riprendi tutto" : "Pausa tutto"}</Button>
-              <Button size="sm" variant="ghost" icon="broom" onClick={() => act(api.clearFinished())}>Pulisci</Button>
+              <Button size="sm" variant="ghost" icon={anyPaused ? "play" : "pause"} onClick={() => act(anyPaused ? api.resumeAll() : api.pauseAll())}>{anyPaused ? t("Resume all") : t("Pause all")}</Button>
+              <Button size="sm" variant="ghost" icon="broom" onClick={() => act(api.clearFinished())}>{t("Clear finished")}</Button>
             </div>
           )}
-          {jobs.length === 0 && <Empty icon="down">Dalla pagina di un anime tocca Trova episodi per scaricare sul NAS</Empty>}
+          {jobs.length === 0 && <Empty icon="down">{t("Open an anime and tap Find episodes to download to your server")}</Empty>}
           {jobs.map((j) => {
             const [label, col] = JOB_STATUS[j.status] ?? [j.status, "var(--text-3)"];
             const bar = ["Running", "PostProcessing", "Paused"].includes(j.status);
@@ -1032,23 +1005,23 @@ export function DownloadsPage() {
                 <div className="top">
                   <div style={{ minWidth: 0 }}>
                     <b>{j.seriesTitle}</b>
-                    <small>{meta(j.episodeNumber != null && `Episodio ${j.episodeNumber}`, j.source === "repair" ? "riparazione" : j.source, (j.priority ?? 0) >= 10 && "subito", j.message)}</small>
+                    <small>{meta(j.episodeNumber != null && t("Episode {n}", { n: j.episodeNumber }), j.source === "repair" ? t("repair") : j.source, (j.priority ?? 0) >= 10 && t("now"), j.message)}</small>
                   </div>
                   <span className="st" style={{ color: col }}>{label}{j.status === "Running" ? ` ${Math.round(j.progress * 100)}%` : ""}</span>
                 </div>
                 {bar && <Progress value={j.progress * 100} />}
                 {j.status !== "Completed" && (
                   <div className="acts">
-                    {j.status === "Failed" || j.status === "Cancelled" ? <Button size="sm" onClick={() => act(api.retryJob(j.id))}>Riprova</Button> : null}
-                    {waiting(j.status) && <Button size="sm" icon="zap" onClick={() => act(api.startNow(j.id))}>Avvia subito</Button>}
-                    {(j.status === "Queued" || j.status === "Running") && <Button size="sm" variant="ghost" onClick={() => act(api.pauseJob(j.id))}>Pausa</Button>}
-                    {j.status === "Paused" && <Button size="sm" onClick={() => act(api.resumeJob(j.id))}>Riprendi</Button>}
+                    {j.status === "Failed" || j.status === "Cancelled" ? <Button size="sm" onClick={() => act(api.retryJob(j.id))}>{t("Retry")}</Button> : null}
+                    {waiting(j.status) && <Button size="sm" icon="zap" onClick={() => act(api.startNow(j.id))}>{t("Start now")}</Button>}
+                    {(j.status === "Queued" || j.status === "Running") && <Button size="sm" variant="ghost" onClick={() => act(api.pauseJob(j.id))}>{t("Pause")}</Button>}
+                    {j.status === "Paused" && <Button size="sm" onClick={() => act(api.resumeJob(j.id))}>{t("Resume")}</Button>}
                     {open(j.status) && (
                       <select value={Math.max(-1, Math.min(1, j.priority ?? 0))} onChange={(e) => act(api.setPriority(j.id, Number(e.target.value)))}>
-                        <option value={1}>Priorità alta</option><option value={0}>Priorità normale</option><option value={-1}>Priorità bassa</option>
+                        <option value={1}>{t("High priority")}</option><option value={0}>{t("Normal priority")}</option><option value={-1}>{t("Low priority")}</option>
                       </select>
                     )}
-                    {open(j.status) && j.status !== "PostProcessing" && <Button size="sm" variant="secondary" onClick={() => act(api.cancelJob(j.id))}>Annulla</Button>}
+                    {open(j.status) && j.status !== "PostProcessing" && <Button size="sm" variant="secondary" onClick={() => act(api.cancelJob(j.id))}>{t("Cancel")}</Button>}
                   </div>
                 )}
               </div>
@@ -1061,8 +1034,7 @@ export function DownloadsPage() {
 }
 
 // ---------- Profilo ----------
-export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout: () => void }) {
-  const [user, setUser] = useState(initial);
+export function ProfilePage({ user, setUser, onLogout, onSwitch }: { user: User; setUser: (u: User) => void; onLogout: () => void; onSwitch: () => void }) {
   const [msg, setMsg] = useState<string>();
   const [queue, setQueue] = useState<QueueSettings>();
   const [storage, setStorage] = useState<StorageInfo>();
@@ -1088,54 +1060,48 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
 
   return (
     <main className="page narrow">
-      <h1>Profilo</h1>
-      <Group title="Account">
-        <SettingsRow icon="user" label="Utente" value={user.username} />
-        <SettingsRow icon="server" label="Server" value={location.host} />
+      <h1>{t("Profile")}</h1>
+      <ProfileGroups user={user} setUser={setUser} onSwitch={onSwitch} onDeleted={onLogout} />
+      <Group title={t("Server")}>
+        <SettingsRow icon="server" label={t("Server")} value={location.host} />
       </Group>
-      <Group title="Riproduzione" note="Vale per gli episodi con più tracce audio. Scegliendo un doppiaggio nel player diventa il nuovo predefinito.">
+      <LanguageGroup />
+      <Group title={t("Playback")} note={t("Applies to episodes with several audio tracks. Picking a dub in the player makes it the new default.")}>
         <div className="row-s">
           <Icon name="audio" color="var(--text-2)" />
-          <span className="l">Doppiaggio predefinito</span>
+          <span className="l">{t("Default dub")}</span>
           <select value={audioLang} onChange={(e) => { setAudioLang(e.target.value); try { localStorage.setItem(AUDIO_LANG_KEY, e.target.value); } catch { /* private mode */ } }}>
-            <option value="">Prima traccia</option><option value="ja">Giapponese</option><option value="it">Italiano</option><option value="en">Inglese</option>
+            <option value="">{t("First track")}</option><option value="ja">{t("Japanese")}</option><option value="it">{t("Italian")}</option><option value="en">{t("English")}</option>
           </select>
         </div>
       </Group>
-      <Group title="AniList" note="Oltre l'85% di un episodio il server aggiorna AniList. Il progresso non torna mai indietro e l'ultimo episodio imposta Completato.">
-        <SettingsRow icon="link" label={user.aniListConnected ? `Collegato come ${user.aniListUserName ?? "AniList"}` : "Non collegato"} />
-        <div className="pad" style={{ paddingTop: 0 }}>
-          {user.aniListConnected
-            ? <div><Button size="sm" variant="secondary" onClick={async () => { await api.aniListDisconnect(); setUser(await api.me()); }}>Scollega</Button></div>
-            : <div><Button size="sm" onClick={async () => { location.href = (await api.aniListConnect()).url; }}>Collega AniList</Button></div>}
-        </div>
-      </Group>
-      <Group title="Passkey">
+      <TrackerGroup setUser={setUser} />
+      <Group title={t("Passkey")}>
         {passkeys.map((p) => (
           <div key={p.id} className="row-s" style={{ paddingRight: 8 }}>
             <Icon name="key" color="var(--text-2)" />
-            <span className="l">{p.name}<small>{p.lastUsedAt ? `Ultimo uso: ${new Date(p.lastUsedAt).toLocaleDateString("it-IT")}` : "Mai usata"}</small></span>
-            <IconButton icon="trash" label="Elimina" onClick={() => api.deletePasskey(p.id).then(() => api.passkeys().then(setPasskeys))} />
+            <span className="l">{p.name}<small>{p.lastUsedAt ? t("Last used: {date}", { date: new Date(p.lastUsedAt).toLocaleDateString(dateLocale) }) : t("Never used")}</small></span>
+            <IconButton icon="trash" label={t("Delete")} onClick={() => api.deletePasskey(p.id).then(() => api.passkeys().then(setPasskeys))} />
           </div>
         ))}
-        <SettingsRow icon="plus" label="Aggiungi passkey"
-          onClick={() => api.passkeyRegister(navigator.platform || "Browser").then(() => { setMsg("Passkey creata"); api.passkeys().then(setPasskeys); }).catch((e) => setMsg(e.message))} />
+        <SettingsRow icon="plus" label={t("Add passkey")}
+          onClick={() => api.passkeyRegister(navigator.platform || "Browser").then(() => { setMsg(t("Passkey created")); api.passkeys().then(setPasskeys); }).catch((e) => setMsg(e.message))} />
       </Group>
       {storage && (
-        <Group title="Spazio sul NAS" note="Sotto la riserva il NAS rifiuta nuovi download e import. Per liberare spazio elimina episodi o serie dalla pagina del titolo.">
+        <Group title={t("Server storage")} note={t("Below the reserve the server refuses new downloads and imports. To free space, delete episodes or series from the title page.")}>
           <div className="pad">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <b style={{ fontFamily: "var(--font-display)", fontSize: 20, color: storage.freeBytes < storage.reserveBytes * 2 ? "var(--danger)" : undefined }}>{gb(storage.freeBytes)} liberi</b>
-              <span className="muted">su {gb(storage.totalBytes)}</span>
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 20, color: storage.freeBytes < storage.reserveBytes * 2 ? "var(--danger)" : undefined }}>{t("{size} free", { size: gb(storage.freeBytes) })}</b>
+              <span className="muted">{t("of {size}", { size: gb(storage.totalBytes) })}</span>
             </div>
             <Progress value={storage.totalBytes ? ((storage.totalBytes - storage.freeBytes) / storage.totalBytes) * 100 : 0} />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }} className="muted"><span>Libreria {gb(storage.libraryBytes)}</span><span>Riserva {gb(storage.reserveBytes)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }} className="muted"><span>{t("Library {size}", { size: gb(storage.libraryBytes) })}</span><span>{t("Reserve {size}", { size: gb(storage.reserveBytes) })}</span></div>
           </div>
         </Group>
       )}
       {queue && (
-        <Group title="Download sul NAS" note="Quanti lavori il NAS esegue insieme. Gli altri aspettano in coda in ordine di priorità.">
-          <div className="row-s"><span className="l">Download contemporanei</span>
+        <Group title={t("Server downloads")} note={t("How many jobs the server runs at once. The others wait in the queue by priority.")}>
+          <div className="row-s"><span className="l">{t("Simultaneous downloads")}</span>
             <select value={queue.maxConcurrentDownloads} style={{ background: "var(--surface-raised)", border: "1px solid var(--border-subtle)", borderRadius: 999, height: 36, padding: "0 12px" }}
               onChange={(e) => api.setQueueSettings({ maxConcurrentDownloads: Number(e.target.value) }).then(setQueue)}>
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
@@ -1144,19 +1110,19 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
         </Group>
       )}
       {tg && (
-        <Group title="Fonti · Telegram">
-          {!tg.configured && <div className="pad muted" style={{ fontSize: 14 }}>Configura ApiId, ApiHash e numero nel file .env del server.</div>}
+        <Group title={t("Sources · Telegram")}>
+          {!tg.configured && <div className="pad muted" style={{ fontSize: 14 }}>{t("Set ApiId, ApiHash and phone number in the server's .env file.")}</div>}
           {tg.configured && !tg.loggedIn && (
             <div className="pad">
               {tgNext ? (
                 <>
-                  <Field label={tgNext === "password" ? "Password 2FA" : "Codice ricevuto su Telegram"} type="password" value={code} onChange={(e) => setCode(e.target.value)} />
-                  <div><Button size="sm" onClick={() => api.telegramLogin(code).then((r) => { setTgNext(r.next); setCode(""); loadTg(); }).catch((e) => setMsg(e.message))}>Verifica</Button></div>
+                  <Field label={tgNext === "password" ? t("2FA password") : t("Code received on Telegram")} type="password" value={code} onChange={(e) => setCode(e.target.value)} />
+                  <div><Button size="sm" onClick={() => api.telegramLogin(code).then((r) => { setTgNext(r.next); setCode(""); loadTg(); }).catch((e) => setMsg(e.message))}>{t("Verify")}</Button></div>
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 14, color: "var(--text-2)" }}>Collega il tuo account per cercare episodi nei canali.</div>
-                  <div><Button size="sm" onClick={() => api.telegramLogin().then((r) => setTgNext(r.next ?? "code")).catch((e) => setMsg(e.message))}>Invia codice</Button></div>
+                  <div style={{ fontSize: 14, color: "var(--text-2)" }}>{t("Connect your account to search for episodes in channels.")}</div>
+                  <div><Button size="sm" onClick={() => api.telegramLogin().then((r) => setTgNext(r.next ?? "code")).catch((e) => setMsg(e.message))}>{t("Send code")}</Button></div>
                 </>
               )}
             </div>
@@ -1164,14 +1130,14 @@ export function ProfilePage({ user: initial, onLogout }: { user: User; onLogout:
           {tg.loggedIn && (
             <>
               {channels.map((c) => <SettingsRow key={c.id} label={c.title} toggle={c.enabled} onToggle={(on) => setChannels(channels.map((x) => (x.id === c.id ? { ...x, enabled: on } : x)))} />)}
-              {channels.length === 0 && <div className="pad muted">Nessun canale trovato.</div>}
-              <div className="pad"><div><Button size="sm" onClick={() => api.saveTelegramChannels(channels).then(() => setMsg("Canali salvati")).catch((e) => setMsg(e.message))}>Salva</Button></div></div>
+              {channels.length === 0 && <div className="pad muted">{t("No channels found.")}</div>}
+              <div className="pad"><div><Button size="sm" onClick={() => api.saveTelegramChannels(channels).then(() => setMsg(t("Channels saved"))).catch((e) => setMsg(e.message))}>{t("Save")}</Button></div></div>
             </>
           )}
         </Group>
       )}
       {msg && <p style={{ color: "var(--accent)", marginTop: 16, fontSize: 14 }}>{msg}</p>}
-      <Group><SettingsRow icon="logout" label="Esci" danger onClick={onLogout} /></Group>
+      <Group><SettingsRow icon="logout" label={t("Sign out")} danger onClick={onLogout} /></Group>
     </main>
   );
 }

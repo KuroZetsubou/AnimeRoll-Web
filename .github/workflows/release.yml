@@ -1,0 +1,58 @@
+# Push to main  -> "nightly" pre-release with the built client (zip of dist/)
+# Tag vX.Y.Z    -> release "vX.Y.Z" with the built client (a tag like v1.2.0-beta.1 is a pre-release)
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Version
+        id: v
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"; echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=nightly" >> "$GITHUB_OUTPUT"; echo "version=nightly-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+          (cd dist && zip -qr "../animeroll-web-${{ steps.v.outputs.version }}.zip" .)
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          files=(animeroll-web-*.zip)
+          if [[ "$TAG" == nightly ]]; then
+            gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+            gh release create nightly "${files[@]}" --target "$GITHUB_SHA" --prerelease --title "Nightly" \
+              --notes "Automatic build of \`main\` at ${GITHUB_SHA::7}. Not a stable release."
+          else
+            pre=(); [[ "$VERSION" == *-* ]] && pre=(--prerelease)
+            gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes --title "AnimeRoll Web $TAG" "${pre[@]}"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          fi
